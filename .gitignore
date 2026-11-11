@@ -1,0 +1,15 @@
+# Build / dist
+dist/
+build/
+__pycache__/
+*.pyc
+*.spec
+
+# Executáveis gerados (disponibilizados via GitHub Releases)
+UmbrelaAnalytics.exe
+UmbrelaAnalytics_Setup*.exe
+
+# Arquivos locais de config do usuário
+mk_config.json
+blacklist.json
+*.duckdb

@@ -1,0 +1,74 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'          # dispara em push de tags tipo v7.1, v8.0, etc.
+
+permissions:
+  contents: write    # necessário para criar releases
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install pyinstaller requests duckdb openpyxl
+
+      - name: Extract version from tag
+        id: get_version
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Patch APP_VERSION in source
+        shell: python
+        run: |
+          import re, sys
+          version = "${{ steps.get_version.outputs.VERSION }}"
+          with open("analisador_macro_lock.py", "r", encoding="utf-8") as f:
+              src = f.read()
+          src = re.sub(r'APP_VERSION\s*=\s*"[^"]+"', f'APP_VERSION = "{version}"', src)
+          with open("analisador_macro_lock.py", "w", encoding="utf-8") as f:
+              f.write(src)
+          print(f"Versão atualizada para {version}")
+
+      - name: Build EXE with PyInstaller
+        run: |
+          pyinstaller `
+            --onefile `
+            --windowed `
+            --name "UmbrelaAnalytics" `
+            analisador_macro_lock.py
+
+      - name: Rename EXE with version
+        shell: bash
+        run: |
+          mv dist/UmbrelaAnalytics.exe "dist/UmbrelaAnalytics_v${{ steps.get_version.outputs.VERSION }}.exe"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Umbrela Analytics v${{ steps.get_version.outputs.VERSION }}"
+          body: |
+            ## Umbrela Analytics v${{ steps.get_version.outputs.VERSION }}
+
+            ### Como atualizar
+            O app detecta esta versão automaticamente e pergunta se deseja atualizar.
+            Ou baixe o `.exe` abaixo e substitua o anterior.
+
+            ---
+            **Umbrela Tecnologia**
+          files: |
+            dist/UmbrelaAnalytics_v${{ steps.get_version.outputs.VERSION }}.exe
+          draft: false
+          prerelease: false
