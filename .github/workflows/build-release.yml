@@ -16,14 +16,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Python 3.12
+      - name: Setup Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.11'
 
       - name: Install dependencies
         run: |
-          pip install pyinstaller requests duckdb openpyxl
+          pip install pyinstaller==6.3.0 requests duckdb openpyxl pillow
 
       - name: Extract version from tag
         id: get_version

@@ -922,8 +922,8 @@ class MacroLockAnalyzerApp:
         tk.Label(qs_hdr, text="Siga os passos abaixo para processar sua base e gerar relatórios.",
                  bg=c["card"], fg=c["muted"], font=("Segoe UI", 9)).pack(side="left", padx=(12, 0))
 
-        steps_row = tk.Frame(qstart, bg=c["card"], padx=20, pady=(0, 20))
-        steps_row.pack(fill="x")
+        steps_row = tk.Frame(qstart, bg=c["card"])
+        steps_row.pack(fill="x", padx=20, pady=(0, 20))
 
         step_data = [
             ("1", "▣", "Carregue o CSV",   "Selecione o arquivo da base de dados."),
