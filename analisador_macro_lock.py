@@ -352,29 +352,38 @@ class MacroLockAnalyzerApp:
     def _build_ui(self):
         # ── Paleta de cores premium ───────────────────────────────────────
         self.COLORS = {
-            "bg":       "#F0F2F8",   # fundo geral — cinza-azul muito suave
-            "sidebar":  "#0F1729",   # sidebar escuro quase preto-azul
-            "sidehov":  "#172240",
-            "sidesel":  "#1E2E56",
-            "panel":    "#FFFFFF",
-            "card":     "#FFFFFF",
-            "border":   "#E2E8F5",
-            "border2":  "#C5D0E8",
-            "text":     "#0F1729",
-            "muted":    "#64748B",
-            "accent":   "#2563EB",   # azul vivo
+            # ── Fundo dark navy ────────────────────────────────────────────
+            "bg":       "#070D1C",   # fundo global — quase preto azulado
+            "sidebar":  "#080E1F",   # sidebar levemente mais escura
+            "sidehov":  "#0D1830",   # hover na sidebar
+            "sidesel":  "#1035A0",   # selecionado — azul vivo
+            "panel":    "#0C1628",   # painel secundário
+            "card":     "#0C1628",   # cards
+            "card2":    "#0F1D35",   # cards secundários
+            "border":   "#162040",   # borda suave
+            "border2":  "#1E2E56",   # borda mais visível
+            # ── Texto ─────────────────────────────────────────────────────
+            "text":     "#E8F0FF",   # texto principal — branco azulado
+            "muted":    "#5A7099",   # texto secundário
+            "muted2":   "#8098C0",   # labels e dicas
+            # ── Accent / azul ─────────────────────────────────────────────
+            "accent":   "#2563EB",
             "accent2":  "#1D4ED8",
-            "accentbg": "#EFF6FF",
-            "ok":       "#059669",
-            "okbg":     "#ECFDF5",
-            "warning":  "#D97706",
-            "danger":   "#DC2626",
-            "purple":   "#7C3AED",
-            "purplebg": "#F5F0FF",
-            "teal":     "#0891B2",
-            "tealbg":   "#ECFEFF",
-            "orange":   "#EA580C",
-            "orangebg": "#FFF7ED",
+            "accentbg": "#0D1F4A",
+            # ── Status colors ─────────────────────────────────────────────
+            "ok":       "#10B981",
+            "okbg":     "#062918",
+            "warning":  "#F59E0B",
+            "danger":   "#EF4444",
+            # ── Paleta de tiles ───────────────────────────────────────────
+            "purple":   "#8B5CF6",
+            "purplebg": "#1A0A40",
+            "teal":     "#06B6D4",
+            "tealbg":   "#031C2E",
+            "orange":   "#F97316",
+            "orangebg": "#2A1200",
+            "pink":     "#EC4899",
+            "pinkbg":   "#2A0A1A",
         }
         c = self.COLORS
         self.root.configure(bg=c["bg"])
@@ -402,61 +411,61 @@ class MacroLockAnalyzerApp:
         style.configure("Muted.TLabel",
             background=c["card"], foreground=c["muted"], font=("Segoe UI", 9))
         style.configure("Metric.TLabel",
-            background=c["card"], foreground=c["accent"], font=("Segoe UI", 24, "bold"))
+            background=c["card"], foreground=c["teal"], font=("Segoe UI", 24, "bold"))
         style.configure("Panel.TLabel",
             background=c["panel"], foreground=c["text"], font=("Segoe UI", 10))
 
         # ── Botões ──────────────────────────────────────────────────────
         style.configure("TButton",
             font=("Segoe UI", 9), padding=(10, 6),
-            background="#E8ECF7", foreground=c["text"],
-            relief="flat", borderwidth=0)
+            background=c["card2"], foreground=c["muted2"],
+            relief="flat", borderwidth=1)
         style.map("TButton",
-            background=[("active", c["border2"]), ("pressed", "#D0D8EC")],
+            background=[("active", c["border2"]), ("pressed", c["border"])],
             foreground=[("active", c["text"])])
 
         style.configure("Accent.TButton",
-            font=("Segoe UI", 10, "bold"), padding=(16, 9),
-            background=c["accent"], foreground="#ffffff",
+            font=("Segoe UI", 10, "bold"), padding=(14, 8),
+            background=c["teal"], foreground="#ffffff",
             relief="flat", borderwidth=0)
         style.map("Accent.TButton",
-            background=[("active", c["accent2"]), ("pressed", "#1E40AF"),
-                        ("disabled", "#93C5FD")])
+            background=[("active", "#0891B2"), ("pressed", "#0E7490"),
+                        ("disabled", "#1E4A5A")])
 
         style.configure("Ok.TButton",
-            font=("Segoe UI", 10, "bold"), padding=(16, 9),
+            font=("Segoe UI", 10, "bold"), padding=(14, 8),
             background=c["ok"], foreground="#ffffff",
             relief="flat", borderwidth=0)
         style.map("Ok.TButton",
-            background=[("active", "#047857"), ("pressed", "#065F46")])
+            background=[("active", "#059669"), ("pressed", "#047857")])
 
         style.configure("Ghost.TButton",
             font=("Segoe UI", 9), padding=(10, 6),
-            background=c["panel"], foreground=c["muted"],
-            relief="flat", borderwidth=1, bordercolor=c["border2"])
+            background=c["card"], foreground=c["muted2"],
+            relief="flat", borderwidth=1)
         style.map("Ghost.TButton",
-            background=[("active", c["bg"])],
-            foreground=[("active", c["accent"])])
+            background=[("active", c["card2"])],
+            foreground=[("active", c["text"])])
 
         style.configure("Danger.TButton",
             font=("Segoe UI", 9), padding=(10, 6),
-            background="#FEE2E2", foreground=c["danger"],
-            relief="flat", borderwidth=0)
+            background=c["card"], foreground=c["danger"],
+            relief="flat", borderwidth=1)
         style.map("Danger.TButton",
-            background=[("active", "#FECACA")])
+            background=[("active", "#2D0A0A")])
 
         # ── Inputs ──────────────────────────────────────────────────────
         style.configure("TEntry",
             padding=(10, 7),
-            fieldbackground="#FFFFFF", foreground=c["text"],
-            insertcolor=c["accent"],
+            fieldbackground=c["card2"], foreground=c["text"],
+            insertcolor=c["teal"],
             bordercolor=c["border2"], lightcolor=c["border2"], darkcolor=c["border2"])
         style.configure("TCombobox",
             padding=(10, 7),
-            fieldbackground="#FFFFFF", foreground=c["text"],
+            fieldbackground=c["card2"], foreground=c["text"],
             bordercolor=c["border2"])
         style.map("TCombobox",
-            fieldbackground=[("readonly", "#FFFFFF")],
+            fieldbackground=[("readonly", c["card2"])],
             selectbackground=[("readonly", c["accentbg"])],
             selectforeground=[("readonly", c["text"])])
 
@@ -468,9 +477,9 @@ class MacroLockAnalyzerApp:
 
         # ── Progressbar ─────────────────────────────────────────────────
         style.configure("Horizontal.TProgressbar",
-            troughcolor=c["border"], background=c["accent"],
-            bordercolor=c["border"], lightcolor=c["accent"],
-            darkcolor=c["accent"], thickness=5)
+            troughcolor=c["border"], background=c["teal"],
+            bordercolor=c["border"], lightcolor=c["teal"],
+            darkcolor=c["teal"], thickness=4)
 
         # ── Treeview ────────────────────────────────────────────────────
         style.configure("Treeview",
@@ -478,12 +487,12 @@ class MacroLockAnalyzerApp:
             foreground=c["text"], font=("Segoe UI", 10),
             rowheight=32, borderwidth=0)
         style.configure("Treeview.Heading",
-            background="#F8FAFF", foreground=c["muted"],
+            background=c["card2"], foreground=c["muted2"],
             font=("Segoe UI", 9, "bold"), relief="flat",
             bordercolor=c["border"])
         style.map("Treeview",
             background=[("selected", c["accentbg"])],
-            foreground=[("selected", c["accent2"])])
+            foreground=[("selected", c["teal"])])
 
         # ═══════════════════════════════════════════════════════════════
         # Raiz: shell → header + body
@@ -582,15 +591,15 @@ class MacroLockAnalyzerApp:
         tk.Frame(bottom, bg=c["border"], height=1).pack(fill="x")
 
         # Status row
-        status_row = tk.Frame(bottom, bg="#F8FAFF", pady=5)
+        status_row = tk.Frame(bottom, bg=c["sidebar"], pady=5)
         status_row.pack(fill="x", padx=0)
         tk.Frame(status_row, bg=c["border"], height=1).pack(fill="x")
-        inner_status = tk.Frame(status_row, bg="#F8FAFF")
+        inner_status = tk.Frame(status_row, bg=c["sidebar"])
         inner_status.pack(fill="x", padx=16, pady=(5, 4))
         ttk.Progressbar(inner_status, variable=self.progress_value, maximum=100,
                         style="Horizontal.TProgressbar", length=200).pack(side="left")
         tk.Label(inner_status, textvariable=self.status_text,
-                 bg="#F8FAFF", fg=c["muted"],
+                 bg=c["sidebar"], fg=c["muted"],
                  font=("Segoe UI", 9)).pack(side="left", padx=(12, 0))
 
         # Log area
@@ -723,15 +732,16 @@ class MacroLockAnalyzerApp:
         _show("dashboard")
 
     def _card(self, parent, padding=(16, 14), accent=False, color=None):
-        """Card branco com borda sutil. accent=True adiciona faixa colorida à esquerda."""
+        """Card dark com borda sutil. accent=True adiciona faixa colorida à esquerda."""
         c = self.COLORS
-        col = color or c["accent"]
-        outer = tk.Frame(parent, bg=c["border2"])
+        col = color or c["teal"]
+        outer = tk.Frame(parent, bg=c["border"],
+                         highlightthickness=1, highlightbackground=c["border2"])
         if accent:
             strip = tk.Frame(outer, bg=col, width=4)
             strip.pack(side="left", fill="y")
         inner = ttk.Frame(outer, style="Card.TFrame", padding=padding)
-        inner.pack(side="left", fill="both", expand=True, padx=(0, 1), pady=1)
+        inner.pack(side="left", fill="both", expand=True)
         return outer, inner
 
     def _section_label(self, parent, text, bg=None):
@@ -741,107 +751,215 @@ class MacroLockAnalyzerApp:
 
     def _metric_card(self, parent, title, variable, subtitle=None,
                      icon="", color=None, bg_color=None):
-        """Tile KPI moderno: faixa lateral colorida, ícone, número grande."""
+        """Tile KPI estilo dark: ícone em círculo colorido, número grande, glow sutil."""
         c = self.COLORS
-        color    = color    or c["accent"]
-        bg_color = bg_color or c["accentbg"]
+        color    = color    or c["teal"]
+        bg_color = bg_color or c["tealbg"]
 
-        # Wrapper com sombra via borda clara
-        wrap = tk.Frame(parent, bg=c["border"], padx=1, pady=1)
+        # Borda externa (simula brilho)
+        wrap = tk.Frame(parent, bg=color, padx=1, pady=1)
         wrap.pack_propagate(True)
 
-        # Card principal
+        # Card principal dark
         card = tk.Frame(wrap, bg=c["card"])
         card.pack(fill="both", expand=True)
 
-        # Faixa colorida lateral esquerda
-        tk.Frame(card, bg=color, width=5).pack(side="left", fill="y")
-
         body = tk.Frame(card, bg=c["card"], padx=18, pady=16)
-        body.pack(side="left", fill="both", expand=True)
+        body.pack(fill="both", expand=True)
 
-        # Ícone grande + título
+        # Linha topo: ícone + título
         top_row = tk.Frame(body, bg=c["card"])
-        top_row.pack(fill="x")
+        top_row.pack(fill="x", pady=(0, 10))
+
         if icon:
-            lbl_icon = tk.Label(top_row, text=icon, bg=bg_color, fg=color,
-                                font=("Segoe UI", 13), padx=7, pady=4)
-            lbl_icon.pack(side="left")
+            ic_frm = tk.Frame(top_row, bg=bg_color, width=36, height=36)
+            ic_frm.pack_propagate(False)
+            ic_frm.pack(side="left")
+            tk.Label(ic_frm, text=icon, bg=bg_color, fg=color,
+                     font=("Segoe UI", 14)).place(relx=0.5, rely=0.5, anchor="center")
+
         tk.Label(top_row, text=title.upper(), bg=c["card"],
-                 fg=c["muted"], font=("Segoe UI", 8, "bold")).pack(
+                 fg=c["muted2"], font=("Segoe UI", 8, "bold")).pack(
                      side="left", padx=(10 if icon else 0, 0))
 
-        # Valor numérico
+        # Valor numérico grande
         tk.Label(body, textvariable=variable, bg=c["card"],
-                 fg=c["text"], font=("Segoe UI", 26, "bold")).pack(
-                     anchor="w", pady=(8, 2))
+                 fg="#FFFFFF", font=("Segoe UI", 28, "bold")).pack(anchor="w")
+
         if subtitle:
             tk.Label(body, text=subtitle, bg=c["card"],
-                     fg=c["muted"], font=("Segoe UI", 8)).pack(anchor="w")
+                     fg=c["muted"], font=("Segoe UI", 8)).pack(anchor="w", pady=(2, 0))
+
+        # Faixa de cor na base do card (glow simulado)
+        tk.Frame(card, bg=bg_color, height=3).pack(fill="x", side="bottom")
+
         return wrap
 
     def _build_dashboard_tab(self, parent):
         c = self.COLORS
 
-        # ── Cabeçalho da página ───────────────────────────────────────
-        top = tk.Frame(parent, bg=c["bg"])
+        # Scroll para o dashboard
+        canvas = tk.Canvas(parent, bg=c["bg"], highlightthickness=0)
+        sb = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        inner = tk.Frame(canvas, bg=c["bg"])
+        win_id = canvas.create_window((0, 0), window=inner, anchor="nw")
+        inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig(win_id, width=e.width))
+        def _mw(ev): canvas.yview_scroll(int(-1 * (ev.delta / 120)), "units")
+        canvas.bind("<Enter>", lambda e: canvas.bind_all("<MouseWheel>", _mw))
+        canvas.bind("<Leave>", lambda e: canvas.unbind_all("<MouseWheel>"))
+
+        # ── Cabeçalho ─────────────────────────────────────────────────
+        top = tk.Frame(inner, bg=c["bg"])
         top.pack(fill="x", pady=(0, 20))
+
         left_hdr = tk.Frame(top, bg=c["bg"])
         left_hdr.pack(side="left")
-        tk.Label(left_hdr, text="Dashboard", bg=c["bg"], fg=c["text"],
-                 font=("Segoe UI", 17, "bold")).pack(anchor="w")
+        # ícone + título
+        hdr_row = tk.Frame(left_hdr, bg=c["bg"])
+        hdr_row.pack(anchor="w")
+        tk.Label(hdr_row, text="▐", bg=c["bg"], fg=c["teal"],
+                 font=("Segoe UI", 20)).pack(side="left")
+        tk.Label(hdr_row, text="Dashboard", bg=c["bg"], fg=c["text"],
+                 font=("Segoe UI", 17, "bold")).pack(side="left", padx=(6, 0))
         tk.Label(left_hdr, text="Visão geral da base de dados processada",
-                 bg=c["bg"], fg=c["muted"], font=("Segoe UI", 9)).pack(anchor="w")
-        ttk.Button(top, text="  Atualizar", style="Ghost.TButton",
-                   command=self.refresh_dashboard).pack(side="right", pady=4)
+                 bg=c["bg"], fg=c["muted"], font=("Segoe UI", 9)).pack(anchor="w", pady=(2, 0))
 
-        # ── Grade de KPIs (2 linhas × 3 colunas) ─────────────────────
-        row1 = tk.Frame(parent, bg=c["bg"])
-        row1.pack(fill="x", pady=(0, 10))
-        for i in range(3):
-            row1.columnconfigure(i, weight=1)
+        # Botões no lado direito
+        btn_right = tk.Frame(top, bg=c["bg"])
+        btn_right.pack(side="right")
+        ttk.Button(btn_right, text="↻  Atualizar", style="Ghost.TButton",
+                   command=self.refresh_dashboard).pack(side="left", padx=(0, 8))
+        ttk.Button(btn_right, text="▶  Processar base", style="Ghost.TButton",
+                   command=lambda: self._show_page("processar")).pack(side="left", padx=(0, 8))
+        ttk.Button(btn_right, text="⬆  Carregar CSV", style="Accent.TButton",
+                   command=lambda: self._show_page("processar")).pack(side="left")
 
-        tiles_r1 = [
-            self._metric_card(row1, "Total de Eventos", self.metric_total,
-                              "registros na base", "▣", c["accent"], c["accentbg"]),
-            self._metric_card(row1, "Fora do Horário", self.metric_night,
-                              "18:00 – 06:59",  "◑", c["orange"], c["orangebg"]),
-            self._metric_card(row1, "Fim de Semana", self.metric_weekend,
-                              "sábado e domingo", "◷", c["purple"], c["purplebg"]),
+        # ── Fila de 6 KPI tiles ───────────────────────────────────────
+        tiles_row = tk.Frame(inner, bg=c["bg"])
+        tiles_row.pack(fill="x", pady=(0, 16))
+        for i in range(6):
+            tiles_row.columnconfigure(i, weight=1)
+
+        tiles = [
+            ("Total de Eventos", self.metric_total,   "registros na base", "▣", c["accent"],  c["accentbg"]),
+            ("Fora do Horário",  self.metric_night,   "18:00 – 06:59",     "◑", c["orange"],  c["orangebg"]),
+            ("Fim de Semana",    self.metric_weekend, "sábado e domingo",   "◷", c["purple"],  c["purplebg"]),
+            ("Usuários Únicos",  self.metric_users,   "identificados",      "◈", c["teal"],    c["tealbg"]),
+            ("Equipamentos",     self.metric_equips,  "na base",            "▦", c["ok"],      c["okbg"]),
+            ("Período Coberto",  self.metric_period,  None,                 "◫", c["pink"],    c["pinkbg"]),
         ]
-        for i, t in enumerate(tiles_r1):
-            t.grid(row=0, column=i, sticky="nsew", padx=(0 if i == 0 else 10, 0))
+        for i, (title, var, sub, icon, col, bgcol) in enumerate(tiles):
+            t = self._metric_card(tiles_row, title, var, sub, icon, col, bgcol)
+            t.grid(row=0, column=i, sticky="nsew",
+                   padx=(0 if i == 0 else 6, 0))
 
-        # Linha 2: 3 tiles
-        row2 = tk.Frame(parent, bg=c["bg"])
-        row2.pack(fill="x", pady=(0, 14))
-        for i in range(3):
-            row2.columnconfigure(i, weight=1)
+        # ── Seção do meio: empty state + atividade ────────────────────
+        mid = tk.Frame(inner, bg=c["bg"])
+        mid.pack(fill="x", pady=(0, 16))
+        mid.columnconfigure(0, weight=3)
+        mid.columnconfigure(1, weight=2)
 
-        tiles_r2 = [
-            self._metric_card(row2, "Usuários Únicos", self.metric_users,
-                              "identificados", "◈", c["teal"],   c["tealbg"]),
-            self._metric_card(row2, "Equipamentos",    self.metric_equips,
-                              "na base",       "▦", c["ok"],     c["okbg"]),
-            self._metric_card(row2, "Período Coberto", self.metric_period,
-                              None,            "◷", "#E11D48",   "#FFF1F2"),
+        # Painel esquerdo: "Nenhuma base carregada"
+        left_panel = tk.Frame(mid, bg=c["card"],
+                              highlightthickness=1, highlightbackground=c["border2"])
+        left_panel.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+
+        # Conteúdo centralizado
+        empty_inner = tk.Frame(left_panel, bg=c["card"], pady=40)
+        empty_inner.pack(expand=True, fill="both")
+
+        # Ícone de banco de dados (texto artístico)
+        db_icon = tk.Label(empty_inner, text="⬡", bg=c["card"], fg=c["teal"],
+                           font=("Segoe UI", 48))
+        db_icon.pack()
+
+        tk.Label(empty_inner, text="Nenhuma base carregada", bg=c["card"],
+                 fg=c["text"], font=("Segoe UI", 13, "bold")).pack(pady=(12, 4))
+        tk.Label(empty_inner,
+                 text="Ainda não há uma base de dados disponível para análise.\nCarregue um arquivo CSV para processar e visualizar os resultados.",
+                 bg=c["card"], fg=c["muted"], font=("Segoe UI", 9),
+                 justify="center").pack()
+
+        tk.Frame(empty_inner, bg=c["card"], height=20).pack()
+        ttk.Button(empty_inner, text="⬆  Carregar CSV", style="Accent.TButton",
+                   command=lambda: self._show_page("processar")).pack()
+        tk.Label(empty_inner,
+                 text="Após o carregamento, clique em Processar base para gerar os indicadores.",
+                 bg=c["card"], fg=c["muted"], font=("Segoe UI", 8)).pack(pady=(10, 0))
+
+        # Painel direito: visão de atividade
+        right_panel = tk.Frame(mid, bg=c["card"],
+                               highlightthickness=1, highlightbackground=c["border2"])
+        right_panel.grid(row=0, column=1, sticky="nsew")
+
+        rp_top = tk.Frame(right_panel, bg=c["card"], padx=20, pady=16)
+        rp_top.pack(fill="x")
+        tk.Label(rp_top, text="▐ Visão de Atividade", bg=c["card"], fg=c["text"],
+                 font=("Segoe UI", 11, "bold")).pack(side="left")
+
+        rp_body = tk.Frame(right_panel, bg=c["card"], pady=50)
+        rp_body.pack(expand=True, fill="both")
+        tk.Label(rp_body, text="▐▐▐", bg=c["card"], fg=c["border2"],
+                 font=("Segoe UI", 28)).pack()
+        tk.Label(rp_body, text="Sem dados para exibir", bg=c["card"],
+                 fg=c["text"], font=("Segoe UI", 11, "bold")).pack(pady=(12, 4))
+        tk.Label(rp_body,
+                 text="Carregue e processe uma base para visualizar\na distribuição de eventos ao longo do tempo.",
+                 bg=c["card"], fg=c["muted"], font=("Segoe UI", 9), justify="center").pack()
+
+        # ── Início rápido ─────────────────────────────────────────────
+        qstart = tk.Frame(inner, bg=c["card"],
+                          highlightthickness=1, highlightbackground=c["border2"])
+        qstart.pack(fill="x")
+        qs_hdr = tk.Frame(qstart, bg=c["card"], padx=20, pady=16)
+        qs_hdr.pack(fill="x")
+        tk.Label(qs_hdr, text="⚡ Início rápido", bg=c["card"], fg=c["text"],
+                 font=("Segoe UI", 11, "bold")).pack(side="left")
+        tk.Label(qs_hdr, text="Siga os passos abaixo para processar sua base e gerar relatórios.",
+                 bg=c["card"], fg=c["muted"], font=("Segoe UI", 9)).pack(side="left", padx=(12, 0))
+
+        steps_row = tk.Frame(qstart, bg=c["card"], padx=20, pady=(0, 20))
+        steps_row.pack(fill="x")
+
+        step_data = [
+            ("1", "▣", "Carregue o CSV",   "Selecione o arquivo da base de dados."),
+            ("2", "▶", "Processe a base",  "Execute o processamento dos registros."),
+            ("3", "▐", "Analise os resultados", "Acompanhe os indicadores e gere relatórios."),
         ]
-        for i, t in enumerate(tiles_r2):
-            t.grid(row=0, column=i, sticky="nsew", padx=(0 if i == 0 else 10, 0))
+        for idx, (num, icon, title, desc) in enumerate(step_data):
+            if idx > 0:
+                # Seta separadora
+                tk.Label(steps_row, text=" → ", bg=c["card"], fg=c["muted"],
+                         font=("Segoe UI", 16)).pack(side="left")
 
-        # Guia de início rápido
-        outer, info = self._card(parent, padding=(20, 16), accent=True, color=c["accent"])
-        outer.pack(fill="x", pady=(4, 0))
-        tk.Label(info, text="INÍCIO RÁPIDO", bg=c["card"], fg=c["accent"],
-                 font=("Segoe UI", 8, "bold")).pack(anchor="w")
-        steps = [
-            "1  →  Vá em Makrolock e conecte-se para buscar relatórios automaticamente",
-            "2  →  Ou acesse Processar, carregue o CSV exportado do Macro Lock e clique em Processar",
-            "3  →  Em Relatórios, aplique filtros e gere os arquivos Excel",
-        ]
-        for s in steps:
-            tk.Label(info, text=s, bg=c["card"], fg=c["muted"],
-                     font=("Segoe UI", 9), anchor="w").pack(fill="x", pady=1)
+            step_frm = tk.Frame(steps_row, bg=c["card2"],
+                                highlightthickness=1, highlightbackground=c["border"])
+            step_frm.pack(side="left", fill="x", expand=True, padx=(0 if idx == 0 else 0, 0))
+            step_inner = tk.Frame(step_frm, bg=c["card2"], padx=16, pady=14)
+            step_inner.pack(fill="both")
+
+            top_step = tk.Frame(step_inner, bg=c["card2"])
+            top_step.pack(fill="x")
+
+            # Número em círculo
+            num_frm = tk.Frame(top_step, bg=c["teal"], width=28, height=28)
+            num_frm.pack_propagate(False)
+            num_frm.pack(side="left")
+            tk.Label(num_frm, text=num, bg=c["teal"], fg="#FFFFFF",
+                     font=("Segoe UI", 10, "bold")).place(relx=0.5, rely=0.5, anchor="center")
+
+            # Ícone
+            tk.Label(top_step, text=icon, bg=c["card2"], fg=c["muted2"],
+                     font=("Segoe UI", 16)).pack(side="left", padx=(10, 0))
+
+            tk.Label(step_inner, text=title, bg=c["card2"], fg=c["text"],
+                     font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(8, 2))
+            tk.Label(step_inner, text=desc, bg=c["card2"], fg=c["muted"],
+                     font=("Segoe UI", 8), wraplength=160, justify="left").pack(anchor="w")
 
     def refresh_dashboard(self):
         # Procura o banco mais recente dentro das subpastas de data
