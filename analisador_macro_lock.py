@@ -172,6 +172,15 @@ class MacroLockAnalyzerApp:
         self.root.geometry("1120x760")
         self.root.minsize(1020, 680)
 
+        # Ícone da janela (taskbar + título)
+        _ico = app_dir() / "logo_umbrela_analytics.ico"
+        if not _ico.exists():
+            _ico = Path(__file__).parent / "logo_umbrela_analytics.ico"
+        try:
+            self.root.iconbitmap(str(_ico))
+        except Exception:
+            pass
+
         self.file_path = tk.StringVar()   # mantido para compatibilidade
         self._multi_files: list[str] = []  # lista de arquivos para processamento múltiplo
 
