@@ -47,6 +47,7 @@ jobs:
           pyinstaller `
             --onefile `
             --windowed `
+            --icon "logo_umbrela_analytics.ico" `
             --name "UmbrelaAnalytics" `
             analisador_macro_lock.py
 
