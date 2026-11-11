@@ -363,9 +363,9 @@ class MacroLockAnalyzerApp:
             "border":   "#162040",   # borda suave
             "border2":  "#1E2E56",   # borda mais visível
             # ── Texto ─────────────────────────────────────────────────────
-            "text":     "#E8F0FF",   # texto principal — branco azulado
-            "muted":    "#5A7099",   # texto secundário
-            "muted2":   "#8098C0",   # labels e dicas
+            "text":     "#FFFFFF",   # texto principal — branco puro
+            "muted":    "#7EB8D4",   # texto secundário — azul claro
+            "muted2":   "#A8C8E8",   # labels e dicas — azul claro brilhante
             # ── Accent / azul ─────────────────────────────────────────────
             "accent":   "#2563EB",
             "accent2":  "#1D4ED8",
@@ -505,8 +505,13 @@ class MacroLockAnalyzerApp:
         header.pack(fill="x")
         header.pack_propagate(False)
 
-        # Gradiente visual: faixa accent no topo
-        tk.Frame(header, bg=c["accent"], height=3).pack(fill="x", side="top")
+        # Linha futurista topo: gradiente teal→accent
+        top_bar = tk.Frame(header, height=3)
+        top_bar.pack(fill="x", side="top")
+        # Simulação de gradiente: 3 segmentos de cor
+        tk.Frame(top_bar, bg=c["teal"],   height=3).pack(side="left", fill="y", expand=True)
+        tk.Frame(top_bar, bg=c["accent"], height=3).pack(side="left", fill="y", expand=True)
+        tk.Frame(top_bar, bg=c["purple"], height=3).pack(side="left", fill="y", expand=True)
 
         # Logo
         logo = self._load_logo()
@@ -530,9 +535,9 @@ class MacroLockAnalyzerApp:
         sub_frame = tk.Frame(header, bg=c["sidebar"])
         sub_frame.pack(side="left")
         tk.Label(sub_frame, text="Painel de Análise", bg=c["sidebar"],
-                 fg="#93C5FD", font=("Segoe UI", 9)).pack(anchor="w")
+                 fg="#B8D8F8", font=("Segoe UI", 9)).pack(anchor="w")
         tk.Label(sub_frame, text="Makrolock · Analytics · RH", bg=c["sidebar"],
-                 fg="#475569", font=("Segoe UI", 8)).pack(anchor="w")
+                 fg="#6B8EB0", font=("Segoe UI", 8)).pack(anchor="w")
 
         # Lado direito: indicador de status do sistema
         right_hdr = tk.Frame(header, bg=c["sidebar"])
@@ -576,7 +581,7 @@ class MacroLockAnalyzerApp:
         tk.Frame(sidebar, bg="#0A1020", height=1).pack(fill="x")
 
         # Seção de navegação
-        tk.Label(sidebar, text="MENU", bg=c["sidebar"], fg="#2D4A7A",
+        tk.Label(sidebar, text="MENU", bg=c["sidebar"], fg="#4A7AAA",
                  font=("Segoe UI", 7, "bold")).pack(
                      anchor="w", padx=20, pady=(16, 4))
 
@@ -651,7 +656,7 @@ class MacroLockAnalyzerApp:
             for k, widgets in self._nav_items.items():
                 sel = (k == key)
                 bg_n  = c["sidesel"] if sel else c["sidebar"]
-                fg_n  = "#FFFFFF"   if sel else "#64748B"
+                fg_n  = "#FFFFFF"   if sel else "#8AAED4"
                 ind_c = c["accent"] if sel else c["sidebar"]
                 for w, attr in widgets:
                     if attr == "ind":
@@ -673,10 +678,10 @@ class MacroLockAnalyzerApp:
             inner_n = tk.Frame(outer_n, bg=c["sidebar"], pady=10, padx=12)
             inner_n.pack(side="left", fill="both", expand=True)
 
-            icon_lbl = tk.Label(inner_n, text=icon, bg=c["sidebar"], fg="#64748B",
+            icon_lbl = tk.Label(inner_n, text=icon, bg=c["sidebar"], fg="#8AAED4",
                                 font=("Segoe UI", 11), width=2, cursor="hand2")
             icon_lbl.pack(side="left")
-            text_lbl = tk.Label(inner_n, text=label, bg=c["sidebar"], fg="#64748B",
+            text_lbl = tk.Label(inner_n, text=label, bg=c["sidebar"], fg="#8AAED4",
                                 font=("Segoe UI", 10), cursor="hand2")
             text_lbl.pack(side="left", padx=(8, 0))
 
@@ -709,10 +714,34 @@ class MacroLockAnalyzerApp:
                 w.bind("<Leave>", _hover_out)
 
         # Separador + versão no rodapé da sidebar
-        tk.Frame(sidebar, bg="#0A1020", height=1).pack(fill="x", pady=(12, 0), side="bottom")
         tk.Label(sidebar, text=f"v{APP_VERSION} · © 2025 DMS",
-                 bg=c["sidebar"], fg="#1E3A6E",
-                 font=("Segoe UI", 7)).pack(side="bottom", pady=6)
+                 bg=c["sidebar"], fg="#2D5A8A",
+                 font=("Segoe UI", 7)).pack(side="bottom", pady=(4, 8))
+
+        # Efeito futurista: scan lines no rodapé da sidebar
+        def _draw_scanlines(cv, w, h):
+            cv.delete("all")
+            # Fundo gradiente simulado — faixas de azul decrescente de baixo
+            steps = 18
+            for i in range(steps):
+                y0 = h - (i + 1) * (h // steps)
+                y1 = h - i * (h // steps)
+                alpha_hex = format(int(20 + i * 6), "02x")
+                cv.create_rectangle(0, y0, w, y1, fill=f"#06{alpha_hex}FF", outline="")
+            # Linhas horizontais luminosas (cyan/teal)
+            line_colors = ["#063050", "#0A4A70", "#0E6090", "#0A4A70",
+                           "#063050", "#042030", "#031020"]
+            for idx, lc in enumerate(line_colors):
+                y = h - 6 - idx * 8
+                cv.create_line(0, y, w, y, fill=lc, width=1)
+            # Linha brilhante no topo do bloco
+            cv.create_line(0, 0, w, 0, fill="#1A8AAA", width=1)
+
+        scan_cv = tk.Canvas(sidebar, bg=c["sidebar"], height=70,
+                            highlightthickness=0, bd=0)
+        scan_cv.pack(side="bottom", fill="x")
+        scan_cv.bind("<Configure>",
+                     lambda e: _draw_scanlines(scan_cv, e.width, e.height))
 
         # Constrói páginas
         tab_dashboard = self._pages["dashboard"]
@@ -779,7 +808,8 @@ class MacroLockAnalyzerApp:
                      font=("Segoe UI", 14)).place(relx=0.5, rely=0.5, anchor="center")
 
         tk.Label(top_row, text=title.upper(), bg=c["card"],
-                 fg=c["muted2"], font=("Segoe UI", 8, "bold")).pack(
+                 fg=c["muted2"], font=("Segoe UI", 7, "bold"),
+                 wraplength=120).pack(
                      side="left", padx=(10 if icon else 0, 0))
 
         # Valor numérico grande
