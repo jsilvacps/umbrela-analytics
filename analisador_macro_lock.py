@@ -904,34 +904,104 @@ class MacroLockAnalyzerApp:
         self._mk_frame_classify.pack(fill="both", expand=True)
 
     def _mk_show_choice_modal(self):
-        """Modal de escolha após login bem-sucedido."""
+        """Modal de escolha após login — design moderno com cards clicáveis."""
         c = self.COLORS
         modal = tk.Toplevel(self.root)
-        modal.title("Makrolock — O que deseja fazer?")
-        modal.configure(bg=c["sidebar"])
+        modal.title("Makrolock")
+        modal.configure(bg="#FFFFFF")
         modal.resizable(False, False)
         modal.grab_set()
 
-        # Centraliza na janela principal
         self.root.update_idletasks()
         rx, ry = self.root.winfo_x(), self.root.winfo_y()
         rw, rh = self.root.winfo_width(), self.root.winfo_height()
-        modal.geometry(f"480x300+{rx + rw//2 - 240}+{ry + rh//2 - 150}")
+        modal.geometry(f"540x400+{rx + rw//2 - 270}+{ry + rh//2 - 200}")
 
-        # Header
-        hdr = tk.Frame(modal, bg=c["sidebar"], pady=20)
+        # Faixa colorida no topo
+        tk.Frame(modal, bg=c["accent"], height=4).pack(fill="x")
+
+        # Área de cabeçalho
+        hdr = tk.Frame(modal, bg="#FFFFFF", padx=36, pady=28)
         hdr.pack(fill="x")
-        tk.Label(hdr, text="✅  Conectado com sucesso!", bg=c["sidebar"],
-                 fg="#6EE7B7", font=("Segoe UI", 11, "bold")).pack()
-        tk.Label(hdr, text="Selecione o que deseja acessar:", bg=c["sidebar"],
-                 fg=c["muted"], font=("Segoe UI", 9)).pack(pady=(4, 0))
 
-        # Separador
-        tk.Frame(modal, bg=c["border"], height=1).pack(fill="x")
+        # Ícone de sucesso
+        icon_frm = tk.Frame(hdr, bg="#ECFDF5", width=44, height=44)
+        icon_frm.pack_propagate(False)
+        icon_frm.pack(side="left", padx=(0, 16))
+        tk.Label(icon_frm, text="✓", bg="#ECFDF5", fg="#059669",
+                 font=("Segoe UI", 20, "bold")).place(relx=0.5, rely=0.5, anchor="center")
 
-        # Botões grandes
-        btn_area = tk.Frame(modal, bg=c["sidebar"], pady=24)
-        btn_area.pack(fill="x")
+        hdr_txt = tk.Frame(hdr, bg="#FFFFFF")
+        hdr_txt.pack(side="left", fill="x", expand=True)
+        tk.Label(hdr_txt, text="Conectado com sucesso", bg="#FFFFFF", fg=c["text"],
+                 font=("Segoe UI", 13, "bold")).pack(anchor="w")
+        email_shown = self._mk_email.get().strip() or "usuário"
+        tk.Label(hdr_txt, text=f"Bem-vindo, {email_shown}", bg="#FFFFFF", fg=c["muted"],
+                 font=("Segoe UI", 9)).pack(anchor="w", pady=(2, 0))
+
+        tk.Frame(modal, bg=c["border"], height=1).pack(fill="x", padx=0)
+
+        # Instrução
+        tk.Label(modal, text="O que você deseja fazer agora?", bg="#FFFFFF", fg=c["muted"],
+                 font=("Segoe UI", 9)).pack(pady=(18, 12))
+
+        def _set_bg_deep(widget, color):
+            try: widget.configure(bg=color)
+            except Exception: pass
+            for ch in widget.winfo_children():
+                _set_bg_deep(ch, color)
+
+        def _make_card(parent, icon, title, subtitle, normal_bg, hover_bg, action):
+            outer = tk.Frame(parent, bg=normal_bg, cursor="hand2",
+                             highlightthickness=1, highlightbackground=c["border2"],
+                             width=210, height=150)
+            outer.pack_propagate(False)
+
+            # Faixa colorida lateral esquerda
+            tk.Frame(outer, bg=normal_bg, width=6).pack(side="left", fill="y")
+            inner = tk.Frame(outer, bg=normal_bg)
+            inner.pack(side="left", fill="both", expand=True, padx=(10, 16), pady=20)
+
+            # Ícone em círculo colorido
+            ic_bg = hover_bg
+            ic_frm = tk.Frame(inner, bg=ic_bg, width=42, height=42)
+            ic_frm.pack_propagate(False)
+            ic_frm.pack(anchor="w")
+            tk.Label(ic_frm, text=icon, bg=ic_bg, font=("Segoe UI", 18)).place(
+                relx=0.5, rely=0.5, anchor="center")
+
+            tk.Label(inner, text=title, bg=normal_bg, fg=c["text"],
+                     font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(10, 2))
+            tk.Label(inner, text=subtitle, bg=normal_bg, fg=c["muted"],
+                     font=("Segoe UI", 8), wraplength=160, justify="left").pack(anchor="w")
+
+            def on_enter(e):
+                _set_bg_deep(outer, hover_bg)
+                outer.configure(highlightbackground=normal_bg)
+            def on_leave(e):
+                _set_bg_deep(outer, normal_bg)
+                # restore icon bg
+                ic_frm.configure(bg=ic_bg)
+                ic_frm.winfo_children()[0].configure(bg=ic_bg)
+                outer.configure(highlightbackground=c["border2"])
+            def on_click(e): action()
+
+            for w in [outer] + list(outer.winfo_children()):
+                w.bind("<Enter>", on_enter)
+                w.bind("<Leave>", on_leave)
+                w.bind("<Button-1>", on_click)
+            # bind recursively
+            def _bind_all(wgt):
+                wgt.bind("<Enter>", on_enter)
+                wgt.bind("<Leave>", on_leave)
+                wgt.bind("<Button-1>", on_click)
+                for ch in wgt.winfo_children():
+                    _bind_all(ch)
+            _bind_all(outer)
+            return outer
+
+        cards_row = tk.Frame(modal, bg="#FFFFFF")
+        cards_row.pack(padx=36, pady=(0, 24))
 
         def _go_reports():
             modal.destroy()
@@ -941,39 +1011,23 @@ class MacroLockAnalyzerApp:
             modal.destroy()
             self._mk_show_classify_frame()
 
-        btn_w = 180
-        btn_h = 90
+        _make_card(cards_row,
+                   icon="📥", title="Relatórios",
+                   subtitle="Baixe relatórios de atividades, apps, internet e produtividade.",
+                   normal_bg="#F0F7FF", hover_bg="#DBEAFE",
+                   action=_go_reports).pack(side="left", padx=(0, 16))
 
-        # Relatórios
-        rel_frm = tk.Frame(btn_area, bg=c["accent"], cursor="hand2",
-                           width=btn_w, height=btn_h)
-        rel_frm.pack_propagate(False)
-        rel_frm.pack(side="left", padx=(40, 12), ipady=4)
-        tk.Label(rel_frm, text="📥", bg=c["accent"], fg="white",
-                 font=("Segoe UI", 22)).pack(pady=(14, 0))
-        tk.Label(rel_frm, text="Relatórios", bg=c["accent"], fg="white",
-                 font=("Segoe UI", 10, "bold")).pack()
-        rel_frm.bind("<Button-1>", lambda e: _go_reports())
-        for w in rel_frm.winfo_children():
-            w.bind("<Button-1>", lambda e: _go_reports())
+        _make_card(cards_row,
+                   icon="🏷️", title="Classificação",
+                   subtitle="Classifique atividades não atribuídas como produtivas ou não.",
+                   normal_bg="#F5F3FF", hover_bg="#EDE9FE",
+                   action=_go_classify).pack(side="left")
 
-        # Classificação
-        cls_frm = tk.Frame(btn_area, bg="#7C3AED", cursor="hand2",
-                           width=btn_w, height=btn_h)
-        cls_frm.pack_propagate(False)
-        cls_frm.pack(side="left", padx=(12, 40), ipady=4)
-        tk.Label(cls_frm, text="🏷️", bg="#7C3AED", fg="white",
-                 font=("Segoe UI", 22)).pack(pady=(14, 0))
-        tk.Label(cls_frm, text="Classificação", bg="#7C3AED", fg="white",
-                 font=("Segoe UI", 10, "bold")).pack()
-        cls_frm.bind("<Button-1>", lambda e: _go_classify())
-        for w in cls_frm.winfo_children():
-            w.bind("<Button-1>", lambda e: _go_classify())
-
-        # Fechar sem escolher
+        # Link discreto para fechar
         tk.Frame(modal, bg=c["border"], height=1).pack(fill="x")
-        tk.Button(modal, text="Fechar", bg=c["sidebar"], fg=c["muted"],
-                  relief="flat", font=("Segoe UI", 9),
+        tk.Button(modal, text="Fechar", bg="#FFFFFF", fg=c["muted"],
+                  relief="flat", font=("Segoe UI", 8), cursor="hand2",
+                  activebackground="#F8FAFC", activeforeground=c["text"],
                   command=modal.destroy).pack(pady=10)
 
     # ── Frame Login ───────────────────────────────────────────────────────
@@ -981,97 +1035,123 @@ class MacroLockAnalyzerApp:
         c = self.COLORS
         frame = tk.Frame(parent, bg=c["bg"])
 
-        # Scroll
-        canvas = tk.Canvas(frame, bg=c["bg"], highlightthickness=0)
-        sb = ttk.Scrollbar(frame, orient="vertical", command=canvas.yview)
-        canvas.configure(yscrollcommand=sb.set)
-        sb.pack(side="right", fill="y")
-        canvas.pack(side="left", fill="both", expand=True)
-        inner = tk.Frame(canvas, bg=c["bg"])
-        win_id = canvas.create_window((0, 0), window=inner, anchor="nw")
-        inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.bind("<Configure>", lambda e: canvas.itemconfig(win_id, width=e.width))
+        # Coluna central — máx 480px
+        frame.columnconfigure(0, weight=1)
+        frame.columnconfigure(1, weight=0)
+        frame.columnconfigure(2, weight=1)
+        frame.rowconfigure(0, weight=1)
 
-        def _mw(ev): canvas.yview_scroll(int(-1 * (ev.delta / 120)), "units")
-        canvas.bind("<Enter>", lambda e: canvas.bind_all("<MouseWheel>", _mw))
-        canvas.bind("<Leave>", lambda e: canvas.unbind_all("<MouseWheel>"))
+        center = tk.Frame(frame, bg=c["bg"])
+        center.grid(row=0, column=1, sticky="n", pady=40)
 
-        # Título
-        top = tk.Frame(inner, bg=c["bg"])
-        top.pack(fill="x", pady=(0, 24))
-        tk.Label(top, text="🔗  Makrolock — Acesso", bg=c["bg"], fg=c["text"],
-                 font=("Segoe UI", 15, "bold")).pack(side="left")
+        # ── Brand bar ─────────────────────────────────────────────────────
+        brand = tk.Frame(center, bg="#FFFFFF",
+                         highlightthickness=1, highlightbackground=c["border"])
+        brand.pack(fill="x", ipadx=0, ipady=0)
 
-        # Card login
-        outer_l, card_l = self._card(inner, accent=True, color=c["accent"])
-        outer_l.pack(fill="x", pady=(0, 12))
+        # Faixa azul no topo do card
+        tk.Frame(brand, bg=c["accent"], height=4).pack(fill="x")
 
-        tk.Label(card_l, text="🔐  CREDENCIAIS MAKROLOCK", bg=c["card"], fg=c["accent"],
-                 font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(0, 8))
+        brand_inner = tk.Frame(brand, bg="#FFFFFF", padx=36, pady=28)
+        brand_inner.pack(fill="x")
 
-        self._mk_badge = tk.Label(card_l, textvariable=self._mk_status,
-                                  bg=c["danger"], fg="white",
-                                  font=("Segoe UI", 8, "bold"), padx=8, pady=3)
-        self._mk_badge.pack(anchor="w", pady=(0, 10))
+        # Logo / ícone
+        logo_circle = tk.Frame(brand_inner, bg=c["accentbg"], width=56, height=56)
+        logo_circle.pack_propagate(False)
+        logo_circle.pack(anchor="center")
+        tk.Label(logo_circle, text="⬡", bg=c["accentbg"], fg=c["accent"],
+                 font=("Segoe UI", 26, "bold")).place(relx=0.5, rely=0.5, anchor="center")
 
-        grid_l = ttk.Frame(card_l, style="Card.TFrame")
-        grid_l.pack(fill="x")
-        grid_l.columnconfigure(0, weight=1)
-        grid_l.columnconfigure(1, weight=1)
+        tk.Label(brand_inner, text="Makrolock", bg="#FFFFFF", fg=c["text"],
+                 font=("Segoe UI", 16, "bold")).pack(anchor="center", pady=(14, 2))
+        tk.Label(brand_inner, text="Entre com suas credenciais para continuar",
+                 bg="#FFFFFF", fg=c["muted"], font=("Segoe UI", 9)).pack(anchor="center")
 
-        def lbl(p, t, r, col, padx=(0, 0)):
-            tk.Label(p, text=t, bg=c["card"], fg=c["muted"],
-                     font=("Segoe UI", 8)).grid(row=r, column=col, sticky="w", padx=padx, pady=(0, 2))
+        tk.Frame(brand_inner, bg=c["border"], height=1).pack(fill="x", pady=(20, 0))
 
-        lbl(grid_l, "E-MAIL", 0, 0)
-        lbl(grid_l, "SENHA",  0, 1, (12, 0))
-        email_entry = ttk.Entry(grid_l, textvariable=self._mk_email, width=32)
-        email_entry.grid(row=1, column=0, sticky="ew", pady=(0, 8))
-        pass_entry = ttk.Entry(grid_l, textvariable=self._mk_pass, width=32, show="•")
-        pass_entry.grid(row=1, column=1, sticky="ew", padx=(12, 0), pady=(0, 8))
+        # ── Formulário ────────────────────────────────────────────────────
+        form = tk.Frame(brand_inner, bg="#FFFFFF")
+        form.pack(fill="x", pady=(20, 0))
+        form.columnconfigure(0, weight=1)
+
+        # Status badge
+        self._mk_badge = tk.Label(form, textvariable=self._mk_status,
+                                  bg="#FEF2F2", fg=c["danger"],
+                                  font=("Segoe UI", 8, "bold"), padx=10, pady=5,
+                                  highlightthickness=1, highlightbackground="#FECACA")
+        self._mk_badge.grid(row=0, column=0, sticky="ew", pady=(0, 16))
+
+        tk.Label(form, text="E-MAIL", bg="#FFFFFF", fg=c["muted"],
+                 font=("Segoe UI", 8, "bold")).grid(row=1, column=0, sticky="w", pady=(0, 4))
+        email_entry = ttk.Entry(form, textvariable=self._mk_email, width=38)
+        email_entry.grid(row=2, column=0, sticky="ew", pady=(0, 14))
+
+        tk.Label(form, text="SENHA", bg="#FFFFFF", fg=c["muted"],
+                 font=("Segoe UI", 8, "bold")).grid(row=3, column=0, sticky="w", pady=(0, 4))
+        pass_entry = ttk.Entry(form, textvariable=self._mk_pass, width=38, show="•")
+        pass_entry.grid(row=4, column=0, sticky="ew", pady=(0, 20))
         pass_entry.bind("<Return>", lambda e: self._mk_login())
 
-        btn_row_l = ttk.Frame(card_l, style="Card.TFrame")
-        btn_row_l.pack(anchor="w", pady=(4, 0))
-        ttk.Button(btn_row_l, text="🔑  Entrar", style="Accent.TButton",
-                   command=self._mk_login).pack(side="left")
+        # Botão entrar — full width
+        ttk.Button(form, text="  Entrar no Makrolock  ", style="Accent.TButton",
+                   command=self._mk_login).grid(row=5, column=0, sticky="ew")
 
-        # Card URL
-        outer_cfg, card_cfg = self._card(inner, padding=(14, 12))
-        outer_cfg.pack(fill="x", pady=(0, 12))
-        tk.Label(card_cfg, text="⚙  CONFIGURAÇÕES", bg=c["card"], fg=c["muted"],
-                 font=("Segoe UI", 8, "bold")).pack(anchor="w", pady=(0, 6))
-        cfg_row = ttk.Frame(card_cfg, style="Card.TFrame")
-        cfg_row.pack(fill="x")
-        cfg_row.columnconfigure(0, weight=1)
-        tk.Label(cfg_row, text="URL DO SISTEMA", bg=c["card"], fg=c["muted"],
-                 font=("Segoe UI", 8)).grid(row=0, column=0, sticky="w", pady=(0, 2))
+        # ── Card configs (colapsável-like, discreto) ───────────────────────
+        cfg_toggle_frm = tk.Frame(brand_inner, bg="#FFFFFF", pady=12)
+        cfg_toggle_frm.pack(fill="x")
+        cfg_lbl = tk.Label(cfg_toggle_frm, text="▸  Configurações avançadas",
+                           bg="#FFFFFF", fg=c["muted"],
+                           font=("Segoe UI", 8), cursor="hand2")
+        cfg_lbl.pack(anchor="w")
+
+        cfg_body = tk.Frame(brand_inner, bg="#F8FAFC",
+                            highlightthickness=1, highlightbackground=c["border"])
         self._mk_url_var = tk.StringVar(value=self._mk_base_url)
-        ttk.Entry(cfg_row, textvariable=self._mk_url_var).grid(row=1, column=0, sticky="ew")
-        tk.Label(cfg_row, text="Altere apenas se a URL do seu Makrolock for diferente.",
-                 bg=c["card"], fg=c["muted"], font=("Segoe UI", 8)).grid(row=2, column=0, sticky="w", pady=(2, 0))
 
-        # Card LOG
-        outer_log, card_log = self._card(inner, padding=(14, 10))
-        outer_log.pack(fill="x", pady=(12, 0))
-        log_top = tk.Frame(card_log, bg=c["card"])
-        log_top.pack(fill="x", pady=(0, 6))
-        tk.Label(log_top, text="📋  LOG DE CONEXÃO", bg=c["card"], fg=c["muted"],
+        def _toggle_cfg():
+            if cfg_body.winfo_ismapped():
+                cfg_body.pack_forget()
+                cfg_lbl.configure(text="▸  Configurações avançadas")
+            else:
+                cfg_body.pack(fill="x", pady=(0, 8))
+                cfg_lbl.configure(text="▾  Configurações avançadas")
+
+        cfg_lbl.bind("<Button-1>", lambda e: _toggle_cfg())
+
+        cfg_inner = tk.Frame(cfg_body, bg="#F8FAFC", padx=16, pady=12)
+        cfg_inner.pack(fill="x")
+        cfg_inner.columnconfigure(0, weight=1)
+        tk.Label(cfg_inner, text="URL DO SISTEMA", bg="#F8FAFC", fg=c["muted"],
+                 font=("Segoe UI", 8)).grid(row=0, column=0, sticky="w", pady=(0, 4))
+        ttk.Entry(cfg_inner, textvariable=self._mk_url_var).grid(row=1, column=0, sticky="ew")
+        tk.Label(cfg_inner, text="Altere apenas se a URL do seu Makrolock for diferente.",
+                 bg="#F8FAFC", fg=c["muted"],
+                 font=("Segoe UI", 7)).grid(row=2, column=0, sticky="w", pady=(4, 0))
+
+        # ── Log de conexão ────────────────────────────────────────────────
+        log_card = tk.Frame(center, bg="#FFFFFF", pady=0,
+                            highlightthickness=1, highlightbackground=c["border"])
+        log_card.pack(fill="x", pady=(12, 0))
+        log_hdr = tk.Frame(log_card, bg="#F8FAFC", padx=16, pady=8,
+                           highlightthickness=0)
+        log_hdr.pack(fill="x")
+        tk.Label(log_hdr, text="Log de conexão", bg="#F8FAFC", fg=c["muted"],
                  font=("Segoe UI", 8, "bold")).pack(side="left")
-        ttk.Button(log_top, text="Limpar", style="Ghost.TButton",
+        ttk.Button(log_hdr, text="Limpar", style="Ghost.TButton",
                    command=self._mk_log_clear).pack(side="right")
-        log_frame = tk.Frame(card_log, bg=c["bg"])
-        log_frame.pack(fill="x")
-        sb_log = ttk.Scrollbar(log_frame, orient="vertical")
+        tk.Frame(log_card, bg=c["border"], height=1).pack(fill="x")
+        log_body = tk.Frame(log_card, bg="#0D1728")
+        log_body.pack(fill="x")
+        sb_log = ttk.Scrollbar(log_body, orient="vertical")
         self._mk_log_box = tk.Text(
-            log_frame, height=10, state="disabled",
+            log_body, height=8, state="disabled",
             bg="#0D1728", fg="#A8C8F0",
             font=("Consolas", 8), relief="flat", bd=0,
             yscrollcommand=sb_log.set, wrap="word",
             insertbackground="#A8C8F0",
         )
         sb_log.config(command=self._mk_log_box.yview)
-        self._mk_log_box.pack(side="left", fill="x", expand=True)
+        self._mk_log_box.pack(side="left", fill="x", expand=True, padx=(10, 0), pady=8)
         sb_log.pack(side="right", fill="y")
 
         return frame
@@ -1096,21 +1176,33 @@ class MacroLockAnalyzerApp:
         canvas.bind("<Enter>", lambda e: canvas.bind_all("<MouseWheel>", _mw))
         canvas.bind("<Leave>", lambda e: canvas.unbind_all("<MouseWheel>"))
 
-        # Barra de navegação superior
-        nav = tk.Frame(inner, bg=c["bg"])
-        nav.pack(fill="x", pady=(0, 12))
-        tk.Label(nav, text="📥  Relatórios Makrolock", bg=c["bg"], fg=c["text"],
-                 font=("Segoe UI", 15, "bold")).pack(side="left")
-        ttk.Button(nav, text="⬅  Voltar ao menu", style="Ghost.TButton",
-                   command=self._mk_show_choice_modal).pack(side="right")
-        ttk.Button(nav, text="Desconectar", style="Ghost.TButton",
-                   command=self._mk_logout).pack(side="right", padx=(0, 8))
+        # ── Topbar de navegação ───────────────────────────────────────────
+        topbar = tk.Frame(inner, bg="#FFFFFF",
+                          highlightthickness=1, highlightbackground=c["border"])
+        topbar.pack(fill="x", pady=(0, 20))
+        tk.Frame(topbar, bg=c["teal"], height=3).pack(fill="x")
+        nav_inner = tk.Frame(topbar, bg="#FFFFFF", padx=20, pady=12)
+        nav_inner.pack(fill="x")
 
-        # Status badge
-        self._mk_reports_badge = tk.Label(inner, textvariable=self._mk_status,
-                                          bg=c["ok"], fg="white",
-                                          font=("Segoe UI", 8, "bold"), padx=8, pady=3)
-        self._mk_reports_badge.pack(anchor="w", pady=(0, 12))
+        # Breadcrumb esquerda
+        bc = tk.Frame(nav_inner, bg="#FFFFFF")
+        bc.pack(side="left")
+        bc_mk = tk.Label(bc, text="Makrolock", bg="#FFFFFF", fg=c["muted"],
+                         font=("Segoe UI", 9), cursor="hand2")
+        bc_mk.pack(side="left")
+        bc_mk.bind("<Button-1>", lambda e: self._mk_show_choice_modal())
+        tk.Label(bc, text=" › ", bg="#FFFFFF", fg=c["border2"],
+                 font=("Segoe UI", 9)).pack(side="left")
+        tk.Label(bc, text="Relatórios", bg="#FFFFFF", fg=c["teal"],
+                 font=("Segoe UI", 9, "bold")).pack(side="left")
+
+        # Botões direita
+        btn_r = tk.Frame(nav_inner, bg="#FFFFFF")
+        btn_r.pack(side="right")
+        ttk.Button(btn_r, text="⬅  Menu", style="Ghost.TButton",
+                   command=self._mk_show_choice_modal).pack(side="left", padx=(0, 8))
+        ttk.Button(btn_r, text="Desconectar", style="Danger.TButton",
+                   command=self._mk_logout).pack(side="left")
 
         # Card relatórios
         outer_r, card_r = self._card(inner, accent=True, color=c["teal"])
@@ -1213,15 +1305,31 @@ class MacroLockAnalyzerApp:
         canvas.bind("<Enter>", lambda e: canvas.bind_all("<MouseWheel>", _mw))
         canvas.bind("<Leave>", lambda e: canvas.unbind_all("<MouseWheel>"))
 
-        # Barra de navegação superior
-        nav = tk.Frame(inner, bg=c["bg"])
-        nav.pack(fill="x", pady=(0, 12))
-        tk.Label(nav, text="🏷️  Classificação em Massa", bg=c["bg"], fg=c["text"],
-                 font=("Segoe UI", 15, "bold")).pack(side="left")
-        ttk.Button(nav, text="⬅  Voltar ao menu", style="Ghost.TButton",
-                   command=self._mk_show_choice_modal).pack(side="right")
-        ttk.Button(nav, text="Desconectar", style="Ghost.TButton",
-                   command=self._mk_logout).pack(side="right", padx=(0, 8))
+        # ── Topbar de navegação ───────────────────────────────────────────
+        topbar = tk.Frame(inner, bg="#FFFFFF",
+                          highlightthickness=1, highlightbackground=c["border"])
+        topbar.pack(fill="x", pady=(0, 20))
+        tk.Frame(topbar, bg="#7C3AED", height=3).pack(fill="x")
+        nav_inner = tk.Frame(topbar, bg="#FFFFFF", padx=20, pady=12)
+        nav_inner.pack(fill="x")
+
+        bc = tk.Frame(nav_inner, bg="#FFFFFF")
+        bc.pack(side="left")
+        bc_mk = tk.Label(bc, text="Makrolock", bg="#FFFFFF", fg=c["muted"],
+                         font=("Segoe UI", 9), cursor="hand2")
+        bc_mk.pack(side="left")
+        bc_mk.bind("<Button-1>", lambda e: self._mk_show_choice_modal())
+        tk.Label(bc, text=" › ", bg="#FFFFFF", fg=c["border2"],
+                 font=("Segoe UI", 9)).pack(side="left")
+        tk.Label(bc, text="Classificação", bg="#FFFFFF", fg="#7C3AED",
+                 font=("Segoe UI", 9, "bold")).pack(side="left")
+
+        btn_r = tk.Frame(nav_inner, bg="#FFFFFF")
+        btn_r.pack(side="right")
+        ttk.Button(btn_r, text="⬅  Menu", style="Ghost.TButton",
+                   command=self._mk_show_choice_modal).pack(side="left", padx=(0, 8))
+        ttk.Button(btn_r, text="Desconectar", style="Danger.TButton",
+                   command=self._mk_logout).pack(side="left")
 
         # Card classificação
         outer_cls, card_cls = self._card(inner, accent=True, color="#8B5CF6")
