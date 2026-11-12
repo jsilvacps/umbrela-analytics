@@ -508,8 +508,8 @@ class MacroLockAnalyzerApp:
         # Linha topo: teal fino e elegante
         tk.Frame(header, bg=c["teal"], height=2).pack(fill="x", side="top")
 
-        # Logo (com referência guardada para evitar garbage collection)
-        logo = self._load_logo()
+        # Logo no header — max_w=80 para caber nos 58px de altura do header
+        logo = self._load_logo(max_w=80)
         if logo is not None:
             lbl_hdr_logo = tk.Label(header, image=logo, bg=c["sidebar"], borderwidth=0)
             lbl_hdr_logo.image = logo  # mantém referência
