@@ -505,19 +505,15 @@ class MacroLockAnalyzerApp:
         header.pack(fill="x")
         header.pack_propagate(False)
 
-        # Linha futurista topo: gradiente teal→accent
-        top_bar = tk.Frame(header, height=3)
-        top_bar.pack(fill="x", side="top")
-        # Simulação de gradiente: 3 segmentos de cor
-        tk.Frame(top_bar, bg=c["teal"],   height=3).pack(side="left", fill="y", expand=True)
-        tk.Frame(top_bar, bg=c["accent"], height=3).pack(side="left", fill="y", expand=True)
-        tk.Frame(top_bar, bg=c["purple"], height=3).pack(side="left", fill="y", expand=True)
+        # Linha topo: teal fino e elegante
+        tk.Frame(header, bg=c["teal"], height=2).pack(fill="x", side="top")
 
-        # Logo
+        # Logo (com referência guardada para evitar garbage collection)
         logo = self._load_logo()
         if logo is not None:
-            tk.Label(header, image=logo, bg=c["sidebar"], borderwidth=0).pack(
-                side="left", padx=(18, 8), pady=6)
+            lbl_hdr_logo = tk.Label(header, image=logo, bg=c["sidebar"], borderwidth=0)
+            lbl_hdr_logo.image = logo  # mantém referência
+            lbl_hdr_logo.pack(side="left", padx=(18, 8), pady=6)
 
         # Brand
         brand_frame = tk.Frame(header, bg=c["sidebar"])
@@ -607,24 +603,10 @@ class MacroLockAnalyzerApp:
                  bg=c["sidebar"], fg=c["muted"],
                  font=("Segoe UI", 9)).pack(side="left", padx=(12, 0))
 
-        # Log area
-        log_wrap = tk.Frame(bottom, bg=c["sidebar"], pady=0)
-        log_wrap.pack(fill="x")
-        log_hdr_row = tk.Frame(log_wrap, bg=c["sidebar"])
-        log_hdr_row.pack(fill="x", padx=14, pady=(5, 2))
-        tk.Label(log_hdr_row, text="LOG", bg=c["sidebar"],
-                 fg=c["muted"], font=("Segoe UI", 7, "bold")).pack(side="left")
-        self.log = tk.Text(
-            log_wrap, height=3,
-            bg="#0A1020", fg="#94A3B8",
-            insertbackground=c["accent"],
-            selectbackground="#1E3A6E",
-            selectforeground="#FFFFFF",
-            relief="flat", borderwidth=0,
-            font=("Consolas", 9),
-            wrap="word", padx=14, pady=6,
-        )
-        self.log.pack(fill="x")
+        # Log oculto — mantido para write_log(), sem exibir na UI
+        self.log = tk.Text(bottom, height=1, state="normal",
+                           bg=c["sidebar"], fg=c["sidebar"],
+                           relief="flat", borderwidth=0, font=("Consolas", 8))
         # Tag para colorir mensagens de log
         self.log.tag_configure("ok",    foreground="#34D399")
         self.log.tag_configure("warn",  foreground="#FCD34D")
@@ -637,7 +619,7 @@ class MacroLockAnalyzerApp:
         self._cur_page = None
 
         nav_list = [
-            ("dashboard",  "▣", "Dashboard"),
+            ("inicio",     "⌂", "Início"),
             ("makrolock",  "⬡", "Makrolock"),
             ("processar",  "⚙", "Processar"),
             ("relatorios", "≡", "Relatórios"),
@@ -716,43 +698,22 @@ class MacroLockAnalyzerApp:
                  bg=c["sidebar"], fg="#2D5A8A",
                  font=("Segoe UI", 7)).pack(side="bottom", pady=(4, 8))
 
-        # Efeito futurista: scan lines no rodapé da sidebar
-        def _draw_scanlines(cv, w, h):
-            cv.delete("all")
-            # Fundo gradiente simulado — faixas de azul decrescente de baixo
-            steps = 18
-            for i in range(steps):
-                y0 = h - (i + 1) * (h // steps)
-                y1 = h - i * (h // steps)
-                alpha_hex = format(int(20 + i * 6), "02x")
-                cv.create_rectangle(0, y0, w, y1, fill=f"#06{alpha_hex}FF", outline="")
-            # Linhas horizontais luminosas (cyan/teal)
-            line_colors = ["#063050", "#0A4A70", "#0E6090", "#0A4A70",
-                           "#063050", "#042030", "#031020"]
-            for idx, lc in enumerate(line_colors):
-                y = h - 6 - idx * 8
-                cv.create_line(0, y, w, y, fill=lc, width=1)
-            # Linha brilhante no topo do bloco
-            cv.create_line(0, 0, w, 0, fill="#1A8AAA", width=1)
-
-        scan_cv = tk.Canvas(sidebar, bg=c["sidebar"], height=70,
-                            highlightthickness=0, bd=0)
-        scan_cv.pack(side="bottom", fill="x")
-        scan_cv.bind("<Configure>",
-                     lambda e: _draw_scanlines(scan_cv, e.width, e.height))
+        # Linha de brilho sutil no rodapé da sidebar
+        tk.Frame(sidebar, bg=c["border2"], height=1).pack(side="bottom", fill="x")
+        tk.Frame(sidebar, bg=c["teal"],    height=1).pack(side="bottom", fill="x")
 
         # Constrói páginas
-        tab_dashboard = self._pages["dashboard"]
+        tab_inicio    = self._pages["inicio"]
         tab_makrolock = self._pages["makrolock"]
         tab_process   = self._pages["processar"]
         tab_reports   = self._pages["relatorios"]
 
-        self._build_dashboard_tab(tab_dashboard)
+        self._build_inicio_tab(tab_inicio)
         self._build_makrolock_tab(tab_makrolock)
         self._build_process_tab(tab_process)
         self._build_reports_tab(tab_reports)
 
-        _show("dashboard")
+        _show("inicio")
 
     def _card(self, parent, padding=(16, 14), accent=False, color=None):
         """Card dark com borda sutil. accent=True adiciona faixa colorida à esquerda."""
@@ -819,175 +780,66 @@ class MacroLockAnalyzerApp:
 
         return wrap
 
-    def _build_dashboard_tab(self, parent):
+    def _build_inicio_tab(self, parent):
+        """Tela inicial — logo centralizada, slogan e rodapé de marca."""
         c = self.COLORS
 
-        # Scroll para o dashboard
-        canvas = tk.Canvas(parent, bg=c["bg"], highlightthickness=0)
-        sb = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
-        canvas.configure(yscrollcommand=sb.set)
-        sb.pack(side="right", fill="y")
-        canvas.pack(side="left", fill="both", expand=True)
-        inner = tk.Frame(canvas, bg=c["bg"])
-        win_id = canvas.create_window((0, 0), window=inner, anchor="nw")
-        inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.bind("<Configure>", lambda e: canvas.itemconfig(win_id, width=e.width))
-        def _mw(ev): canvas.yview_scroll(int(-1 * (ev.delta / 120)), "units")
-        canvas.bind("<Enter>", lambda e: canvas.bind_all("<MouseWheel>", _mw))
-        canvas.bind("<Leave>", lambda e: canvas.unbind_all("<MouseWheel>"))
+        # Coluna central para centralizar tudo verticalmente
+        parent.columnconfigure(0, weight=1)
+        parent.rowconfigure(0, weight=1)
 
-        # ── Cabeçalho: logo centralizada + botões ─────────────────────
-        hdr_wrap = tk.Frame(inner, bg=c["bg"])
-        hdr_wrap.pack(fill="x", pady=(0, 24))
+        center = tk.Frame(parent, bg=c["bg"])
+        center.grid(row=0, column=0, sticky="nsew")
+        center.columnconfigure(0, weight=1)
+        center.rowconfigure(0, weight=1)
 
-        # Logo centralizada
-        logo_dash = self._load_logo()
-        if logo_dash is not None:
-            lbl_logo = tk.Label(hdr_wrap, image=logo_dash, bg=c["bg"], borderwidth=0)
-            lbl_logo.image = logo_dash
-            lbl_logo.pack(anchor="center", pady=(12, 6))
+        inner = tk.Frame(center, bg=c["bg"])
+        inner.grid(row=0, column=0)
+
+        # ── Logo ──────────────────────────────────────────────────────
+        logo_img = self._load_logo()
+        if logo_img is not None:
+            lbl = tk.Label(inner, image=logo_img, bg=c["bg"], borderwidth=0)
+            lbl.image = logo_img
+            lbl.pack(anchor="center", pady=(0, 20))
         else:
-            tk.Label(hdr_wrap, text="Umbrela Analytics", bg=c["bg"], fg=c["text"],
-                     font=("Segoe UI", 20, "bold")).pack(anchor="center", pady=(12, 2))
+            tk.Label(inner, text="Umbrela Analytics",
+                     bg=c["bg"], fg=c["text"],
+                     font=("Segoe UI", 28, "bold")).pack(anchor="center", pady=(0, 20))
 
-        tk.Label(hdr_wrap, text="Visão geral da base de dados processada",
-                 bg=c["bg"], fg=c["muted"], font=("Segoe UI", 9)).pack(anchor="center")
+        # ── Linha decorativa teal ─────────────────────────────────────
+        line_frm = tk.Frame(inner, bg=c["bg"])
+        line_frm.pack(anchor="center", pady=(0, 20))
+        tk.Frame(line_frm, bg=c["teal"],   width=60, height=2).pack(side="left")
+        tk.Frame(line_frm, bg=c["accent"], width=30, height=2).pack(side="left")
+        tk.Frame(line_frm, bg=c["purple"], width=20, height=2).pack(side="left")
 
-        # Separador fino
-        tk.Frame(hdr_wrap, bg=c["border2"], height=1).pack(fill="x", pady=(14, 0))
+        # ── Slogan ────────────────────────────────────────────────────
+        tk.Label(inner,
+                 text="Monitoramento · Análise · Produtividade",
+                 bg=c["bg"], fg=c["muted2"],
+                 font=("Segoe UI", 12)).pack(anchor="center")
 
-        # Botões centralizados abaixo
-        btn_right = tk.Frame(hdr_wrap, bg=c["bg"])
-        btn_right.pack(anchor="center", pady=(10, 0))
-        ttk.Button(btn_right, text="↻  Atualizar", style="Ghost.TButton",
-                   command=self.refresh_dashboard).pack(side="left", padx=(0, 8))
-        ttk.Button(btn_right, text="▶  Processar base", style="Ghost.TButton",
-                   command=lambda: self._show_page("processar")).pack(side="left", padx=(0, 8))
-        ttk.Button(btn_right, text="⬆  Carregar CSV", style="Accent.TButton",
+        # ── Separador ─────────────────────────────────────────────────
+        tk.Frame(inner, bg=c["border2"], height=1, width=360).pack(anchor="center", pady=32)
+
+        # ── Botões de acesso rápido ───────────────────────────────────
+        btn_row = tk.Frame(inner, bg=c["bg"])
+        btn_row.pack(anchor="center", pady=(0, 32))
+
+        ttk.Button(btn_row, text="⬡  Makrolock", style="Accent.TButton",
+                   command=lambda: self._show_page("makrolock")).pack(side="left", padx=(0, 12))
+        ttk.Button(btn_row, text="⚙  Processar", style="Ghost.TButton",
                    command=lambda: self._show_page("processar")).pack(side="left")
 
-        # ── Fila de 6 KPI tiles ───────────────────────────────────────
-        tiles_row = tk.Frame(inner, bg=c["bg"])
-        tiles_row.pack(fill="x", pady=(0, 16))
-        for i in range(6):
-            tiles_row.columnconfigure(i, weight=1)
-
-        tiles = [
-            ("Total de Eventos", self.metric_total,   "registros na base", "▣", c["accent"],  c["accentbg"]),
-            ("Fora do Horário",  self.metric_night,   "18:00 – 06:59",     "◑", c["orange"],  c["orangebg"]),
-            ("Fim de Semana",    self.metric_weekend, "sábado e domingo",   "◷", c["purple"],  c["purplebg"]),
-            ("Usuários Únicos",  self.metric_users,   "identificados",      "◈", c["teal"],    c["tealbg"]),
-            ("Equipamentos",     self.metric_equips,  "na base",            "▦", c["ok"],      c["okbg"]),
-            ("Período Coberto",  self.metric_period,  None,                 "◫", c["pink"],    c["pinkbg"]),
-        ]
-        for i, (title, var, sub, icon, col, bgcol) in enumerate(tiles):
-            t = self._metric_card(tiles_row, title, var, sub, icon, col, bgcol)
-            t.grid(row=0, column=i, sticky="nsew",
-                   padx=(0 if i == 0 else 6, 0))
-
-        # ── Seção do meio: empty state + atividade ────────────────────
-        mid = tk.Frame(inner, bg=c["bg"])
-        mid.pack(fill="x", pady=(0, 16))
-        mid.columnconfigure(0, weight=3)
-        mid.columnconfigure(1, weight=2)
-
-        # Painel esquerdo: "Nenhuma base carregada"
-        left_panel = tk.Frame(mid, bg=c["card"],
-                              highlightthickness=1, highlightbackground=c["border2"])
-        left_panel.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
-
-        # Conteúdo centralizado
-        empty_inner = tk.Frame(left_panel, bg=c["card"], pady=40)
-        empty_inner.pack(expand=True, fill="both")
-
-        # Ícone de banco de dados (texto artístico)
-        db_icon = tk.Label(empty_inner, text="⬡", bg=c["card"], fg=c["teal"],
-                           font=("Segoe UI", 48))
-        db_icon.pack()
-
-        tk.Label(empty_inner, text="Nenhuma base carregada", bg=c["card"],
-                 fg=c["text"], font=("Segoe UI", 13, "bold")).pack(pady=(12, 4))
-        tk.Label(empty_inner,
-                 text="Ainda não há uma base de dados disponível para análise.\nCarregue um arquivo CSV para processar e visualizar os resultados.",
-                 bg=c["card"], fg=c["muted"], font=("Segoe UI", 9),
-                 justify="center").pack()
-
-        tk.Frame(empty_inner, bg=c["card"], height=20).pack()
-        ttk.Button(empty_inner, text="⬆  Carregar CSV", style="Accent.TButton",
-                   command=lambda: self._show_page("processar")).pack()
-        tk.Label(empty_inner,
-                 text="Após o carregamento, clique em Processar base para gerar os indicadores.",
-                 bg=c["card"], fg=c["muted"], font=("Segoe UI", 8)).pack(pady=(10, 0))
-
-        # Painel direito: visão de atividade
-        right_panel = tk.Frame(mid, bg=c["card"],
-                               highlightthickness=1, highlightbackground=c["border2"])
-        right_panel.grid(row=0, column=1, sticky="nsew")
-
-        rp_top = tk.Frame(right_panel, bg=c["card"], padx=20, pady=16)
-        rp_top.pack(fill="x")
-        tk.Label(rp_top, text="▐ Visão de Atividade", bg=c["card"], fg=c["text"],
-                 font=("Segoe UI", 11, "bold")).pack(side="left")
-
-        rp_body = tk.Frame(right_panel, bg=c["card"], pady=50)
-        rp_body.pack(expand=True, fill="both")
-        tk.Label(rp_body, text="▐▐▐", bg=c["card"], fg=c["border2"],
-                 font=("Segoe UI", 28)).pack()
-        tk.Label(rp_body, text="Sem dados para exibir", bg=c["card"],
-                 fg=c["text"], font=("Segoe UI", 11, "bold")).pack(pady=(12, 4))
-        tk.Label(rp_body,
-                 text="Carregue e processe uma base para visualizar\na distribuição de eventos ao longo do tempo.",
-                 bg=c["card"], fg=c["muted"], font=("Segoe UI", 9), justify="center").pack()
-
-        # ── Início rápido ─────────────────────────────────────────────
-        qstart = tk.Frame(inner, bg=c["card"],
-                          highlightthickness=1, highlightbackground=c["border2"])
-        qstart.pack(fill="x")
-        qs_hdr = tk.Frame(qstart, bg=c["card"], padx=20, pady=16)
-        qs_hdr.pack(fill="x")
-        tk.Label(qs_hdr, text="⚡ Início rápido", bg=c["card"], fg=c["text"],
-                 font=("Segoe UI", 11, "bold")).pack(side="left")
-        tk.Label(qs_hdr, text="Siga os passos abaixo para processar sua base e gerar relatórios.",
-                 bg=c["card"], fg=c["muted"], font=("Segoe UI", 9)).pack(side="left", padx=(12, 0))
-
-        steps_row = tk.Frame(qstart, bg=c["card"])
-        steps_row.pack(fill="x", padx=20, pady=(0, 20))
-
-        step_data = [
-            ("1", "▣", "Carregue o CSV",   "Selecione o arquivo da base de dados."),
-            ("2", "▶", "Processe a base",  "Execute o processamento dos registros."),
-            ("3", "▐", "Analise os resultados", "Acompanhe os indicadores e gere relatórios."),
-        ]
-        for idx, (num, icon, title, desc) in enumerate(step_data):
-            if idx > 0:
-                # Seta separadora
-                tk.Label(steps_row, text=" → ", bg=c["card"], fg=c["muted"],
-                         font=("Segoe UI", 16)).pack(side="left")
-
-            step_frm = tk.Frame(steps_row, bg=c["card2"],
-                                highlightthickness=1, highlightbackground=c["border"])
-            step_frm.pack(side="left", fill="x", expand=True, padx=(0 if idx == 0 else 0, 0))
-            step_inner = tk.Frame(step_frm, bg=c["card2"], padx=16, pady=14)
-            step_inner.pack(fill="both")
-
-            top_step = tk.Frame(step_inner, bg=c["card2"])
-            top_step.pack(fill="x")
-
-            # Número em círculo
-            num_frm = tk.Frame(top_step, bg=c["teal"], width=28, height=28)
-            num_frm.pack_propagate(False)
-            num_frm.pack(side="left")
-            tk.Label(num_frm, text=num, bg=c["teal"], fg="#FFFFFF",
-                     font=("Segoe UI", 10, "bold")).place(relx=0.5, rely=0.5, anchor="center")
-
-            # Ícone
-            tk.Label(top_step, text=icon, bg=c["card2"], fg=c["muted2"],
-                     font=("Segoe UI", 16)).pack(side="left", padx=(10, 0))
-
-            tk.Label(step_inner, text=title, bg=c["card2"], fg=c["text"],
-                     font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(8, 2))
-            tk.Label(step_inner, text=desc, bg=c["card2"], fg=c["muted"],
-                     font=("Segoe UI", 8), wraplength=160, justify="left").pack(anchor="w")
+        # ── Rodapé de marca ───────────────────────────────────────────
+        tk.Label(inner,
+                 text="Desenvolvido por Umbrela Tecnologia",
+                 bg=c["bg"], fg=c["muted"],
+                 font=("Segoe UI", 9)).pack(anchor="center")
+        tk.Label(inner, text=f"v{APP_VERSION}",
+                 bg=c["bg"], fg=c["border2"],
+                 font=("Segoe UI", 8)).pack(anchor="center", pady=(4, 0))
 
     def refresh_dashboard(self):
         # Procura o banco mais recente dentro das subpastas de data
