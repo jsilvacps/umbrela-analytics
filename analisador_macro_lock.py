@@ -333,12 +333,11 @@ class MacroLockAnalyzerApp:
             self.root.after(0, lambda: self.set_status("Erro ao atualizar.", 0))
 
     def _load_logo(self, max_w=330):
-        """Carrega a logo PNG quando ela estiver na mesma pasta do .py/.exe."""
+        """Carrega a logo PNG (subsample simples para header)."""
         try:
             logo_path = app_dir() / LOGO_FILE
             if logo_path.exists():
                 img = tk.PhotoImage(file=str(logo_path))
-                # Reduz automaticamente se a imagem estiver muito grande.
                 if img.width() > max_w:
                     factor = max(1, int(img.width() / max_w))
                     img = img.subsample(factor, factor)
@@ -348,6 +347,23 @@ class MacroLockAnalyzerApp:
             pass
         self._logo_img = None
         return None
+
+    def _load_logo_hd(self, target_w=480):
+        """Carrega a logo em alta definição usando PIL para redimensionar."""
+        try:
+            from PIL import Image, ImageTk
+            logo_path = app_dir() / LOGO_FILE
+            if logo_path.exists():
+                pil_img = Image.open(str(logo_path))
+                orig_w, orig_h = pil_img.size
+                target_h = int(orig_h * target_w / orig_w)
+                pil_img = pil_img.resize((target_w, target_h), Image.LANCZOS)
+                img = ImageTk.PhotoImage(pil_img)
+                self._logo_hd_img = img
+                return img
+        except Exception:
+            pass
+        return self._load_logo(max_w=target_w)
 
     def _build_ui(self):
         # ── Paleta de cores premium ───────────────────────────────────────
@@ -814,50 +830,39 @@ class MacroLockAnalyzerApp:
         inner = tk.Frame(center, bg=c["bg"])
         inner.grid(row=0, column=0)
 
-        # ── Logo ──────────────────────────────────────────────────────
-        logo_img = self._load_logo(max_w=400)
+        # ── Logo HD centralizada ───────────────────────────────────────
+        logo_img = self._load_logo_hd(target_w=480)
         if logo_img is not None:
             lbl = tk.Label(inner, image=logo_img, bg=c["bg"], borderwidth=0)
             lbl.image = logo_img
-            lbl.pack(anchor="center", pady=(0, 14))
+            lbl.pack(anchor="center", pady=(0, 20))
         else:
             tk.Label(inner, text="Umbrela Analytics",
                      bg=c["bg"], fg=c["text"],
-                     font=("Segoe UI", 36, "bold")).pack(anchor="center", pady=(0, 14))
+                     font=("Segoe UI", 40, "bold")).pack(anchor="center", pady=(0, 20))
 
-        # ── Linha decorativa teal ─────────────────────────────────────
+        # ── Linha decorativa ──────────────────────────────────────────
         line_frm = tk.Frame(inner, bg=c["bg"])
-        line_frm.pack(anchor="center", pady=(0, 12))
-        tk.Frame(line_frm, bg=c["teal"],   width=60, height=2).pack(side="left")
-        tk.Frame(line_frm, bg=c["accent"], width=30, height=2).pack(side="left")
-        tk.Frame(line_frm, bg=c["purple"], width=20, height=2).pack(side="left")
+        line_frm.pack(anchor="center", pady=(0, 14))
+        tk.Frame(line_frm, bg=c["teal"],   width=80, height=2).pack(side="left")
+        tk.Frame(line_frm, bg=c["accent"], width=40, height=2).pack(side="left")
+        tk.Frame(line_frm, bg=c["purple"], width=24, height=2).pack(side="left")
 
         # ── Slogan ────────────────────────────────────────────────────
         tk.Label(inner,
                  text="Monitoramento · Análise · Produtividade",
                  bg=c["bg"], fg=c["muted2"],
-                 font=("Segoe UI", 12)).pack(anchor="center")
-
-        # ── Separador ─────────────────────────────────────────────────
-        tk.Frame(inner, bg=c["border2"], height=1, width=360).pack(anchor="center", pady=18)
-
-        # ── Botões de acesso rápido ───────────────────────────────────
-        btn_row = tk.Frame(inner, bg=c["bg"])
-        btn_row.pack(anchor="center", pady=(0, 18))
-
-        ttk.Button(btn_row, text="⬡  Makrolock", style="Accent.TButton",
-                   command=lambda: self._show_page("makrolock")).pack(side="left", padx=(0, 12))
-        ttk.Button(btn_row, text="⚙  Processar", style="Ghost.TButton",
-                   command=lambda: self._show_page("processar")).pack(side="left")
+                 font=("Segoe UI", 13)).pack(anchor="center")
 
         # ── Rodapé de marca ───────────────────────────────────────────
+        tk.Frame(inner, bg=c["border2"], height=1, width=400).pack(anchor="center", pady=24)
         tk.Label(inner,
                  text="Desenvolvido por Umbrela Tecnologia",
                  bg=c["bg"], fg=c["muted"],
-                 font=("Segoe UI", 9)).pack(anchor="center")
+                 font=("Segoe UI", 10)).pack(anchor="center")
         tk.Label(inner, text=f"v{APP_VERSION}",
                  bg=c["bg"], fg=c["border2"],
-                 font=("Segoe UI", 8)).pack(anchor="center", pady=(4, 0))
+                 font=("Segoe UI", 8)).pack(anchor="center", pady=(6, 0))
 
     def refresh_dashboard(self):
         # Procura o banco mais recente dentro das subpastas de data
