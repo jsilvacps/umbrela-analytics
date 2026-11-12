@@ -3338,7 +3338,13 @@ class MacroLockAnalyzerApp:
                     TempoFormatado
                 FROM (
                     SELECT
-                        TRY_CAST(DataHora AS TIMESTAMP) AS DataHoraTs,
+                        COALESCE(
+                            TRY_STRPTIME(DataHora, '%d/%m/%Y %H:%M:%S'),
+                            TRY_STRPTIME(DataHora, '%d/%m/%Y %H:%M'),
+                            TRY_STRPTIME(DataHora, '%Y-%m-%d %H:%M:%S'),
+                            TRY_STRPTIME(DataHora, '%Y-%m-%d %H:%M'),
+                            TRY_CAST(DataHora AS TIMESTAMP)
+                        ) AS DataHoraTs,
                         Equipamento,
                         Usuario,
                         Status,
