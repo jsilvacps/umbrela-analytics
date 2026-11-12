@@ -365,6 +365,21 @@ class MacroLockAnalyzerApp:
             pass
         return self._load_logo(max_w=target_w)
 
+    def _bind_date_mask(self, entry_widget, str_var):
+        """Aplica máscara DD/MM/AAAA automaticamente enquanto o usuário digita."""
+        def on_key(event=None):
+            raw = str_var.get()
+            digits = "".join(c for c in raw if c.isdigit())[:8]
+            masked = digits
+            if len(digits) > 2:
+                masked = digits[:2] + "/" + digits[2:]
+            if len(digits) > 4:
+                masked = digits[:2] + "/" + digits[2:4] + "/" + digits[4:]
+            if masked != raw:
+                str_var.set(masked)
+                entry_widget.icursor(len(masked))
+        str_var.trace_add("write", lambda *_: on_key())
+
     def _build_ui(self):
         # ── Paleta de cores premium ───────────────────────────────────────
         self.COLORS = {
@@ -1234,10 +1249,14 @@ class MacroLockAnalyzerApp:
         date_row.pack(fill="x", pady=(0, 10))
         tk.Label(date_row, text="DE", bg=c["card"], fg=c["muted"],
                  font=("Segoe UI", 8)).pack(side="left")
-        ttk.Entry(date_row, textvariable=self._mk_date_start, width=14).pack(side="left", padx=(4, 0))
+        _e_mk_ds = ttk.Entry(date_row, textvariable=self._mk_date_start, width=14)
+        _e_mk_ds.pack(side="left", padx=(4, 0))
+        self._bind_date_mask(_e_mk_ds, self._mk_date_start)
         tk.Label(date_row, text="ATÉ", bg=c["card"], fg=c["muted"],
                  font=("Segoe UI", 8)).pack(side="left", padx=(12, 0))
-        ttk.Entry(date_row, textvariable=self._mk_date_end, width=14).pack(side="left", padx=(4, 0))
+        _e_mk_de = ttk.Entry(date_row, textvariable=self._mk_date_end, width=14)
+        _e_mk_de.pack(side="left", padx=(4, 0))
+        self._bind_date_mask(_e_mk_de, self._mk_date_end)
         tk.Label(date_row, text="(DD/MM/AAAA)", bg=c["card"], fg=c["muted"],
                  font=("Segoe UI", 8)).pack(side="left", padx=(8, 0))
 
@@ -2693,8 +2712,12 @@ class MacroLockAnalyzerApp:
 
         lbl(grid, "DATA INICIAL (opcional)", 4, 0)
         lbl(grid, "DATA FINAL (opcional)",   4, 1, (16, 0))
-        ttk.Entry(grid, textvariable=self.report_date_start, width=18).grid(row=5, column=0, sticky="w", pady=(0, 4))
-        ttk.Entry(grid, textvariable=self.report_date_end,   width=18).grid(row=5, column=1, sticky="w", padx=(16, 0), pady=(0, 4))
+        _e_rds = ttk.Entry(grid, textvariable=self.report_date_start, width=18)
+        _e_rds.grid(row=5, column=0, sticky="w", pady=(0, 4))
+        self._bind_date_mask(_e_rds, self.report_date_start)
+        _e_rde = ttk.Entry(grid, textvariable=self.report_date_end, width=18)
+        _e_rde.grid(row=5, column=1, sticky="w", padx=(16, 0), pady=(0, 4))
+        self._bind_date_mask(_e_rde, self.report_date_end)
         tk.Label(grid, text="DD/MM/AAAA ou AAAA-MM-DD  —  vazio = toda a base",
                  bg=c["card"], fg=c["muted"], font=("Segoe UI", 8)).grid(row=6, column=0, columnspan=2, sticky="w", pady=(0, 12))
 
