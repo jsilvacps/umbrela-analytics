@@ -1719,12 +1719,12 @@ class MacroLockAnalyzerApp:
             return
         if self._mk_busy:
             return
+        self._mk_busy = True
+        self._mk_fetch_btn.configure(state="disabled")
         threading.Thread(target=self._mk_do_fetch, daemon=True).start()
 
     def _mk_do_fetch(self):
         import tempfile, traceback as _tb
-        self._mk_busy = True
-        self._mk_fetch_btn.configure(state="disabled")
         try:
             from datetime import datetime as _dt
 
@@ -1776,7 +1776,6 @@ class MacroLockAnalyzerApp:
                     label = f"[{done}/{total_combos}] {type_lbl} — {group_name}"
                     self._mk_prog_lbl.set(label)
                     self._mk_log(f"Baixando: {label}")
-                    self.root.update_idletasks()
 
                     params = {
                         "type":   type_key,
@@ -1863,7 +1862,7 @@ class MacroLockAnalyzerApp:
             self.root.after(0, lambda: messagebox.showerror("Erro Makrolock", _err))
         finally:
             self._mk_busy = False
-            self.root.after(0, lambda: self._mk_fetch_btn.configure(state="normal") if hasattr(self, "_mk_fetch_btn") else None)
+            self.root.after(0, lambda: self._mk_fetch_btn.configure(state="normal"))
 
     # ── Filtros da listbox de classificação ──────────────────────────────
     def _mk_cls_apply_filter(self, extra_terms: list[str] | None = None):
