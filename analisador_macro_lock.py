@@ -171,6 +171,7 @@ class MacroLockAnalyzerApp:
         self.root.title(f"{APP_NAME} v{APP_VERSION}")
         self.root.geometry("1120x760")
         self.root.minsize(1020, 680)
+        self.root.state("zoomed")
 
         # Ícone da janela (taskbar + título)
         _ico = app_dir() / "logo_umbrela_analytics.ico"
@@ -331,14 +332,13 @@ class MacroLockAnalyzerApp:
                 "Erro na atualização", str(e)))
             self.root.after(0, lambda: self.set_status("Erro ao atualizar.", 0))
 
-    def _load_logo(self):
+    def _load_logo(self, max_w=330):
         """Carrega a logo PNG quando ela estiver na mesma pasta do .py/.exe."""
         try:
             logo_path = app_dir() / LOGO_FILE
             if logo_path.exists():
                 img = tk.PhotoImage(file=str(logo_path))
                 # Reduz automaticamente se a imagem estiver muito grande.
-                max_w = 330
                 if img.width() > max_w:
                     factor = max(1, int(img.width() / max_w))
                     img = img.subsample(factor, factor)
@@ -530,10 +530,12 @@ class MacroLockAnalyzerApp:
             side="left", fill="y", pady=14, padx=18)
         sub_frame = tk.Frame(header, bg=c["sidebar"])
         sub_frame.pack(side="left")
-        tk.Label(sub_frame, text="Painel de Análise", bg=c["sidebar"],
-                 fg="#B8D8F8", font=("Segoe UI", 9)).pack(anchor="w")
-        tk.Label(sub_frame, text="Makrolock · Analytics · RH", bg=c["sidebar"],
-                 fg="#6B8EB0", font=("Segoe UI", 8)).pack(anchor="w")
+        self._hdr_title_lbl = tk.Label(sub_frame, text="Início", bg=c["sidebar"],
+                 fg="#B8D8F8", font=("Segoe UI", 9))
+        self._hdr_title_lbl.pack(anchor="w")
+        self._hdr_sub_lbl = tk.Label(sub_frame, text="Umbrela Analytics", bg=c["sidebar"],
+                 fg="#6B8EB0", font=("Segoe UI", 8))
+        self._hdr_sub_lbl.pack(anchor="w")
 
         # Lado direito: indicador de status do sistema
         right_hdr = tk.Frame(header, bg=c["sidebar"])
@@ -628,11 +630,24 @@ class MacroLockAnalyzerApp:
             page = tk.Frame(content_area, bg=c["bg"], padx=24, pady=20)
             self._pages[key] = page
 
+        _page_titles = {
+            "inicio":     ("Início",     "Umbrela Analytics"),
+            "makrolock":  ("Makrolock",  "Monitoramento de acessos"),
+            "processar":  ("Processar",  "Importar e tratar dados"),
+            "relatorios": ("Relatórios", "Análise e exportação"),
+        }
+
         def _show(key):
             if self._cur_page:
                 self._pages[self._cur_page].pack_forget()
             self._pages[key].pack(fill="both", expand=True)
             self._cur_page = key
+            # Atualiza breadcrumb no header
+            title, sub = _page_titles.get(key, (key.capitalize(), ""))
+            if hasattr(self, "_hdr_title_lbl"):
+                self._hdr_title_lbl.configure(text=title)
+            if hasattr(self, "_hdr_sub_lbl"):
+                self._hdr_sub_lbl.configure(text=sub)
             for k, widgets in self._nav_items.items():
                 sel = (k == key)
                 bg_n  = c["sidesel"] if sel else c["sidebar"]
@@ -784,6 +799,9 @@ class MacroLockAnalyzerApp:
         """Tela inicial — logo centralizada, slogan e rodapé de marca."""
         c = self.COLORS
 
+        # Remove o padding interno da página para usar todo o espaço
+        parent.configure(padx=0, pady=0)
+
         # Coluna central para centralizar tudo verticalmente
         parent.columnconfigure(0, weight=1)
         parent.rowconfigure(0, weight=1)
@@ -797,19 +815,19 @@ class MacroLockAnalyzerApp:
         inner.grid(row=0, column=0)
 
         # ── Logo ──────────────────────────────────────────────────────
-        logo_img = self._load_logo()
+        logo_img = self._load_logo(max_w=400)
         if logo_img is not None:
             lbl = tk.Label(inner, image=logo_img, bg=c["bg"], borderwidth=0)
             lbl.image = logo_img
-            lbl.pack(anchor="center", pady=(0, 20))
+            lbl.pack(anchor="center", pady=(0, 14))
         else:
             tk.Label(inner, text="Umbrela Analytics",
                      bg=c["bg"], fg=c["text"],
-                     font=("Segoe UI", 28, "bold")).pack(anchor="center", pady=(0, 20))
+                     font=("Segoe UI", 36, "bold")).pack(anchor="center", pady=(0, 14))
 
         # ── Linha decorativa teal ─────────────────────────────────────
         line_frm = tk.Frame(inner, bg=c["bg"])
-        line_frm.pack(anchor="center", pady=(0, 20))
+        line_frm.pack(anchor="center", pady=(0, 12))
         tk.Frame(line_frm, bg=c["teal"],   width=60, height=2).pack(side="left")
         tk.Frame(line_frm, bg=c["accent"], width=30, height=2).pack(side="left")
         tk.Frame(line_frm, bg=c["purple"], width=20, height=2).pack(side="left")
@@ -821,11 +839,11 @@ class MacroLockAnalyzerApp:
                  font=("Segoe UI", 12)).pack(anchor="center")
 
         # ── Separador ─────────────────────────────────────────────────
-        tk.Frame(inner, bg=c["border2"], height=1, width=360).pack(anchor="center", pady=32)
+        tk.Frame(inner, bg=c["border2"], height=1, width=360).pack(anchor="center", pady=18)
 
         # ── Botões de acesso rápido ───────────────────────────────────
         btn_row = tk.Frame(inner, bg=c["bg"])
-        btn_row.pack(anchor="center", pady=(0, 32))
+        btn_row.pack(anchor="center", pady=(0, 18))
 
         ttk.Button(btn_row, text="⬡  Makrolock", style="Accent.TButton",
                    command=lambda: self._show_page("makrolock")).pack(side="left", padx=(0, 12))
