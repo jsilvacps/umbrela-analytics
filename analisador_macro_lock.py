@@ -3112,12 +3112,24 @@ class MacroLockAnalyzerApp:
             self.write_log(f"[{idx+1}] Delimitador: '{delim}'")
             read_path = self._normalize_csv_to_utf8(csv_path, output_dir)
 
+        # Lê primeira linha para detectar tipo de CSV (cabeçalho)
+        first_line_cols = []
+        try:
+            with open(str(read_path), encoding="utf-8-sig", errors="replace") as _fh:
+                first_line = _fh.readline()
+            first_line_cols = [c.strip().lower() for c in first_line.replace('"', '').split(delim)]
+        except Exception:
+            pass
+
+        # Detecta CSV de Internet (Ação / Host / URL) vs CSV principal (Status / Categoria / Atividade)
+        is_internet_csv = any(c in first_line_cols for c in ("ação", "acao", "host", "url"))
+
         con.execute("DROP TABLE IF EXISTS bruto_raw_tmp")
         con.execute(f"""
             CREATE TEMP TABLE bruto_raw_tmp AS
             SELECT * FROM read_csv(
                 '{sql_path(read_path)}',
-                header = false,
+                header = true,
                 delim = '{delim}',
                 quote = '"',
                 escape = '"',
@@ -3126,28 +3138,50 @@ class MacroLockAnalyzerApp:
             )
         """)
         raw_cols = [row[0] for row in con.execute("DESCRIBE bruto_raw_tmp").fetchall()]
-        self.write_log(f"[{idx+1}] Colunas: {raw_cols[:9]}")
+        self.write_log(f"[{idx+1}] Tipo: {'Internet' if is_internet_csv else 'MacroLock'} | Colunas: {raw_cols[:9]}")
 
-        def col(i):
-            if i < len(raw_cols):
-                return raw_cols[i]
-            raise RuntimeError(
-                f"Arquivo '{csv_path.name}' tem apenas {len(raw_cols)} colunas — esperado ao menos {i+1}."
-            )
+        def col_name(name, fallback="''"):
+            """Retorna nome da coluna quoted se existir (case-insensitive), senão fallback."""
+            m = {c.lower(): c for c in raw_cols}
+            return f'"{m[name.lower()]}"' if name.lower() in m else fallback
 
-        select_sql = f"""
-            SELECT
-                {col(0)}::VARCHAR AS DataHora,
-                {col(1)}::VARCHAR AS Equipamento,
-                {col(2)}::VARCHAR AS Usuario,
-                {col(3)}::VARCHAR AS Status,
-                {col(4)}::VARCHAR AS Aplicativo,
-                {col(5) if len(raw_cols) > 5 else "''"}::VARCHAR AS CampoExtra,
-                {col(6) if len(raw_cols) > 6 else "''"}::VARCHAR AS JanelaEvento,
-                TRY_CAST({col(7) if len(raw_cols) > 7 else "NULL"} AS BIGINT) AS DuracaoSegundos,
-                {col(8) if len(raw_cols) > 8 else "''"}::VARCHAR AS TempoFormatado
-            FROM bruto_raw_tmp
-        """
+        def col_pos(i, fallback="''"):
+            return f'"{raw_cols[i]}"' if i < len(raw_cols) else fallback
+
+        if is_internet_csv:
+            # Formato: Data/Hora | Computador | Usuário | Ação | Duração | Host | URL
+            select_sql = f"""
+                SELECT
+                    {col_name('data/hora', col_pos(0))}::VARCHAR AS DataHora,
+                    {col_name('computador', col_pos(1))}::VARCHAR AS Equipamento,
+                    {col_name('usuário', col_name('usuario', col_pos(2)))}::VARCHAR AS Usuario,
+                    {col_name('ação', col_name('acao', col_pos(3)))}::VARCHAR AS Status,
+                    {col_name('host', col_pos(5))}::VARCHAR AS Aplicativo,
+                    {col_name('url', col_pos(6))}::VARCHAR AS CampoExtra,
+                    {col_name('host', col_pos(5))}::VARCHAR AS JanelaEvento,
+                    TRY_CAST({col_name('duração', col_name('duracao', col_pos(4)))} AS BIGINT) AS DuracaoSegundos,
+                    ''::VARCHAR AS TempoFormatado
+                FROM bruto_raw_tmp
+                WHERE {col_name('data/hora', col_pos(0))} IS NOT NULL
+                  AND {col_name('data/hora', col_pos(0))} != ''
+            """
+        else:
+            # Formato principal: Data/Hora | Computador | Usuário | Status | Duração | Categoria | Atividade | ...
+            select_sql = f"""
+                SELECT
+                    {col_name('data/hora', col_pos(0))}::VARCHAR AS DataHora,
+                    {col_name('computador', col_pos(1))}::VARCHAR AS Equipamento,
+                    {col_name('usuário', col_name('usuario', col_pos(2)))}::VARCHAR AS Usuario,
+                    {col_name('status', col_pos(3))}::VARCHAR AS Status,
+                    {col_name('categoria', col_name('atividade', col_pos(5)))}::VARCHAR AS Aplicativo,
+                    {col_pos(5)}::VARCHAR AS CampoExtra,
+                    {col_name('atividade', col_pos(6))}::VARCHAR AS JanelaEvento,
+                    TRY_CAST({col_name('duração', col_name('duracao', col_pos(4)))} AS BIGINT) AS DuracaoSegundos,
+                    {col_pos(8) if len(raw_cols) > 8 else "''"}::VARCHAR AS TempoFormatado
+                FROM bruto_raw_tmp
+                WHERE {col_name('data/hora', col_pos(0))} IS NOT NULL
+                  AND {col_name('data/hora', col_pos(0))} != ''
+            """
         if idx == 0:
             con.execute("DROP TABLE IF EXISTS bruto")
             con.execute(f"CREATE TABLE bruto AS {select_sql}")
