@@ -1831,10 +1831,6 @@ class MacroLockAnalyzerApp:
             for f in added_files:
                 if f not in self._multi_files:
                     self._multi_files.append(f)
-            try:
-                self._files_refresh()
-            except Exception:
-                pass
 
             self._mk_prog_var.set(100)
             msg = f"✅  {len(added_files)} arquivo(s) adicionado(s) à fila."
@@ -1842,25 +1838,32 @@ class MacroLockAnalyzerApp:
             self._mk_log(msg, "ok")
             self._mk_log("Vá para ⚙ Processar e clique em '▶ Processar' quando quiser.", "ok")
 
-            # Navega para Processar mas NÃO processa
-            self._show_page("processar")
-            messagebox.showinfo(
-                "Relatórios baixados",
-                f"{len(added_files)} arquivo(s) adicionado(s) à fila.\n\n"
-                "Clique em '▶ Processar' para consolidar os dados."
-            )
+            n_files = len(added_files)
+
+            def _finish_on_ui():
+                try:
+                    self._files_refresh()
+                except Exception:
+                    pass
+                if n_files:
+                    self._show_page("processar")
+                    messagebox.showinfo(
+                        "Relatórios baixados",
+                        f"{n_files} arquivo(s) adicionado(s) à fila.\n\n"
+                        "Clique em '▶ Processar' para consolidar os dados."
+                    )
+
+            self.root.after(0, _finish_on_ui)
 
         except Exception as e:
-            self._mk_prog_lbl.set(f"❌  {e}")
-            self._mk_log(f"ERRO: {e}", "error")
+            _err = str(e)
+            self._mk_prog_lbl.set(f"❌  {_err}")
+            self._mk_log(f"ERRO: {_err}", "error")
             self._mk_log(_tb.format_exc(), "error")
-            messagebox.showerror("Erro Makrolock", str(e))
+            self.root.after(0, lambda: messagebox.showerror("Erro Makrolock", _err))
         finally:
             self._mk_busy = False
-            try:
-                self._mk_fetch_btn.configure(state="normal")
-            except Exception:
-                pass
+            self.root.after(0, lambda: self._mk_fetch_btn.configure(state="normal") if hasattr(self, "_mk_fetch_btn") else None)
 
     # ── Filtros da listbox de classificação ──────────────────────────────
     def _mk_cls_apply_filter(self, extra_terms: list[str] | None = None):
