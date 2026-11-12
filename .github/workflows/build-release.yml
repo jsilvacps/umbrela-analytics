@@ -23,7 +23,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install pyinstaller==6.3.0 requests duckdb openpyxl pillow
+          pip install pyinstaller==6.3.0 requests duckdb openpyxl pillow xlsxwriter
 
       - name: Extract version from tag
         id: get_version
