@@ -366,19 +366,45 @@ class MacroLockAnalyzerApp:
         return self._load_logo(max_w=target_w)
 
     def _bind_date_mask(self, entry_widget, str_var):
-        """Aplica máscara DD/MM/AAAA automaticamente enquanto o usuário digita."""
-        def on_key(event=None):
-            raw = str_var.get()
-            digits = "".join(c for c in raw if c.isdigit())[:8]
-            masked = digits
-            if len(digits) > 2:
-                masked = digits[:2] + "/" + digits[2:]
-            if len(digits) > 4:
-                masked = digits[:2] + "/" + digits[2:4] + "/" + digits[4:]
-            if masked != raw:
-                str_var.set(masked)
-                entry_widget.icursor(len(masked))
-        str_var.trace_add("write", lambda *_: on_key())
+        """Aplica máscara DD/MM/AAAA com / automático e cursor correto."""
+        _busy  = [False]
+        _prev  = [""]
+
+        def _fmt(digits, growing):
+            n = len(digits)
+            if n <= 1:
+                return digits
+            if n == 2:
+                # Auto-adiciona / ao avançar; mantém se já estava lá
+                return digits + "/" if growing else digits
+            if n <= 4:
+                return digits[:2] + "/" + digits[2:]
+            if n == 4 and growing:
+                return digits[:2] + "/" + digits[2:4] + "/"
+            return digits[:2] + "/" + digits[2:4] + "/" + digits[4:8]
+
+        def _on_write(*_):
+            if _busy[0]:
+                return
+            _busy[0] = True
+            try:
+                raw     = str_var.get()
+                growing = len(raw) > len(_prev[0])
+                digits  = "".join(c for c in raw if c.isdigit())[:8]
+                # Detecta n=4 depois de formatar para adicionar segundo /
+                masked  = _fmt(digits, growing)
+                if len(digits) == 4 and growing and not masked.endswith("/"):
+                    masked += "/"
+                if masked != raw:
+                    _prev[0] = masked
+                    str_var.set(masked)
+                    entry_widget.icursor(len(masked))
+                else:
+                    _prev[0] = raw
+            finally:
+                _busy[0] = False
+
+        str_var.trace_add("write", _on_write)
 
     def _build_ui(self):
         # ── Paleta de cores premium ───────────────────────────────────────
