@@ -3,10 +3,10 @@ name: Build & Release
 on:
   push:
     tags:
-      - 'v*'          # dispara em push de tags tipo v7.1, v8.0, etc.
+      - 'v*'
 
 permissions:
-  contents: write    # necessário para criar releases
+  contents: write
 
 jobs:
   build:
@@ -33,7 +33,7 @@ jobs:
       - name: Patch APP_VERSION in source
         shell: python
         run: |
-          import re, sys
+          import re
           version = "${{ steps.get_version.outputs.VERSION }}"
           with open("analisador_macro_lock.py", "r", encoding="utf-8") as f:
               src = f.read()
@@ -48,13 +48,20 @@ jobs:
             --onefile `
             --windowed `
             --icon "logo_umbrela_analytics.ico" `
+            --add-data "logo_umbrela_analytics.png;." `
+            --add-data "logo_umbrela_analytics.ico;." `
             --name "UmbrelaAnalytics" `
             analisador_macro_lock.py
 
-      - name: Rename EXE with version
-        shell: bash
+      - name: Install Inno Setup
         run: |
-          mv dist/UmbrelaAnalytics.exe "dist/UmbrelaAnalytics_v${{ steps.get_version.outputs.VERSION }}.exe"
+          choco install innosetup --yes --no-progress
+
+      - name: Build Setup installer
+        run: |
+          $version = "${{ steps.get_version.outputs.VERSION }}"
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=$version UmbrelaAnalytics_Setup.iss
+        shell: pwsh
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -63,13 +70,16 @@ jobs:
           body: |
             ## Umbrela Analytics v${{ steps.get_version.outputs.VERSION }}
 
-            ### Como atualizar
-            O app detecta esta versão automaticamente e pergunta se deseja atualizar.
-            Ou baixe o `.exe` abaixo e substitua o anterior.
+            ### Instalação (primeira vez)
+            Baixe e execute **UmbrelaAnalytics_Setup_v${{ steps.get_version.outputs.VERSION }}.exe**
+
+            ### Atualização automática
+            O app detecta esta versão e atualiza sozinho — só clique em **Atualizar agora**.
 
             ---
             **Umbrela Tecnologia**
           files: |
-            dist/UmbrelaAnalytics_v${{ steps.get_version.outputs.VERSION }}.exe
+            installer/UmbrelaAnalytics_Setup_v${{ steps.get_version.outputs.VERSION }}.exe
+            dist/UmbrelaAnalytics.exe
           draft: false
           prerelease: false
