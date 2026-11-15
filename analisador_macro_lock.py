@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "Umbrela Analytics"
-APP_VERSION = "8.26"
+APP_VERSION = "8.27"
 GITHUB_REPO = "jsilvacps/umbrela-analytics"   # repositório público de releases
 DEFAULT_EXCLUDE = "OFFLINE, [LOCK.OFFLINE], [LOCK.LOGIN], LOGIN, LOGOUT"
 LOGO_FILE = "logo_umbrela_analytics.png"
@@ -1978,7 +1978,7 @@ class MacroLockAnalyzerApp:
                 dur_raw = rec.get("duration", rec.get("time", rec.get("seconds", "")))
                 dur = str(dur_raw) if dur_raw is not None else ""
                 cat  = rec.get("category",  rec.get("categoryName", rec.get("tag", "")))
-                act  = rec.get("activity",  rec.get("title", rec.get("window", rec.get("app", ""))))
+                act  = rec.get("text",      rec.get("activity", rec.get("title", rec.get("window", ""))))
                 app  = rec.get("app",       rec.get("process", rec.get("application", "")))
                 return ";".join(_esc(v) for v in [ts, comp, user, stat, dur, cat, act, app])
 
