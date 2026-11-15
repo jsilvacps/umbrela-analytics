@@ -1354,6 +1354,27 @@ class MacroLockAnalyzerApp:
                  text="  Os arquivos serão adicionados à fila — processe quando quiser na aba ⚙ Processar.",
                  bg=c["card"], fg=c["muted"], font=("Segoe UI", 8)).pack(side="left")
 
+        # Log visível
+        tk.Frame(card_r, bg=c["border"], height=1).pack(fill="x", pady=(12, 6))
+        log_hdr = tk.Frame(card_r, bg=c["card"])
+        log_hdr.pack(fill="x")
+        tk.Label(log_hdr, text="LOG", bg=c["card"], fg=c["muted"],
+                 font=("Segoe UI", 7, "bold")).pack(side="left")
+        ttk.Button(log_hdr, text="Limpar", style="Ghost.TButton",
+                   command=self._mk_log_clear).pack(side="right")
+
+        log_frame = tk.Frame(card_r, bg=c["card2"])
+        log_frame.pack(fill="both", expand=True, pady=(4, 0))
+        self._mk_log_box = tk.Text(
+            log_frame, height=8, state="disabled",
+            bg=c["card2"], fg="#A8C8F0", font=("Consolas", 8),
+            wrap="word", relief="flat", bd=0,
+        )
+        log_sb = ttk.Scrollbar(log_frame, orient="vertical", command=self._mk_log_box.yview)
+        self._mk_log_box.configure(yscrollcommand=log_sb.set)
+        log_sb.pack(side="right", fill="y")
+        self._mk_log_box.pack(fill="both", expand=True, padx=6, pady=4)
+
         return frame
 
     # ── Frame Classificação ───────────────────────────────────────────────
