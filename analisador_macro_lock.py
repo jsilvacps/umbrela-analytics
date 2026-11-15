@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "Umbrela Analytics"
-APP_VERSION = "8.19"
+APP_VERSION = "8.20"
 GITHUB_REPO = "jsilvacps/umbrela-analytics"   # repositório público de releases
 DEFAULT_EXCLUDE = "OFFLINE, [LOCK.OFFLINE], [LOCK.LOGIN], LOGIN, LOGOUT"
 LOGO_FILE = "logo_umbrela_analytics.png"
@@ -1852,66 +1852,82 @@ class MacroLockAnalyzerApp:
                 self._mk_log(f"  ⚠ Só cabeçalho.", "warn")
                 return None
 
+            # Recolhe todos os computerIds dos grupos selecionados (sem duplicatas)
+            all_computer_ids = []
+            seen_cids = set()
+            for gid, gname in selected_groups:
+                if gid and gid in self._mk_group_computers:
+                    for cid in self._mk_group_computers[gid]:
+                        if cid not in seen_cids:
+                            seen_cids.add(cid)
+                            all_computer_ids.append(cid)
+            self._mk_log(f"Computadores encontrados: {all_computer_ids or ['(sem filtro)']}")
+
             total_types = len(selected_types)
             done = 0
             for type_key, type_lbl in selected_types:
                 done += 1
-                prog = int(done / total_types * 90)
-                self._mk_prog_var.set(prog)
+                self._mk_prog_var.set(int(done / total_types * 90))
                 self._mk_prog_lbl.set(f"[{done}/{total_types}] {type_lbl}")
-                self._mk_log(f"Baixando: [{done}/{total_types}] {type_lbl}")
+                self._mk_log(f"\nBaixando: [{done}/{total_types}] {type_lbl}")
 
-                # Recolhe todos os computerIds dos grupos selecionados (sem duplicatas)
-                computer_ids = []
-                seen = set()
-                for gid, gname in selected_groups:
-                    if gid and gid in self._mk_group_computers:
-                        for cid in self._mk_group_computers[gid]:
-                            if cid not in seen:
-                                seen.add(cid)
-                                computer_ids.append((cid, gname))
+                # Baixa um CSV por computador e combina num único arquivo
+                header_line = None
+                all_data_lines = []
 
-                result = None
-                if computer_ids:
-                    # Tenta por computer individual primeiro
-                    for cid, cname in computer_ids:
-                        self._mk_log(f"  computer={cid} ({cname})")
-                        result = _try_download(type_key, {"computer": cid}, cid)
-                        if result:
-                            break
-                    # Fallback: tenta com group id
+                targets = all_computer_ids if all_computer_ids else [None]
+                for cid in targets:
+                    extra = {"computer": cid} if cid else {}
+                    self._mk_log(f"  computer={cid or 'todos'}")
+                    result = _try_download(type_key, extra, str(cid or ""))
                     if not result:
-                        for gid, gname in selected_groups:
-                            if not gid:
-                                continue
-                            self._mk_log(f"  group={gid} ({gname})")
-                            result = _try_download(type_key, {"group": gid}, gid)
-                            if result:
-                                break
-                # Último fallback: sem filtro
-                if not result:
-                    self._mk_log(f"  sem filtro de grupo/computer")
-                    result = _try_download(type_key, {}, "")
+                        continue
+                    r, preview_bytes, linhas = result
+                    # Lê o restante do stream
+                    rest = b""
+                    for chunk in r.iter_content(chunk_size=1024 * 64):
+                        if chunk:
+                            rest += chunk
+                    full_text = (preview_bytes + rest).decode("utf-8-sig", errors="replace")
+                    rows = [l for l in full_text.splitlines() if l.strip()]
+                    if not rows:
+                        continue
+                    if header_line is None:
+                        header_line = rows[0]
+                    # Pula cabeçalho nas linhas seguintes
+                    data_rows = rows[1:] if rows[0] == header_line else rows
+                    all_data_lines.extend(data_rows)
+                    self._mk_log(f"    +{len(data_rows)} linhas", "ok")
 
-                if not result:
-                    self._mk_log(f"  ⚠ Nenhuma combinação retornou dados.", "warn")
+                if not all_data_lines or header_line is None:
+                    # Fallback: tenta sem filtro de computer
+                    self._mk_log(f"  sem filtro")
+                    result = _try_download(type_key, {}, "")
+                    if result:
+                        r, preview_bytes, linhas = result
+                        rest = b""
+                        for chunk in r.iter_content(chunk_size=1024 * 64):
+                            if chunk:
+                                rest += chunk
+                        full_text = (preview_bytes + rest).decode("utf-8-sig", errors="replace")
+                        rows = [l for l in full_text.splitlines() if l.strip()]
+                        header_line = rows[0] if rows else None
+                        all_data_lines = rows[1:] if len(rows) > 1 else []
+
+                if not all_data_lines or header_line is None:
+                    self._mk_log(f"  ⚠ Nenhum dado encontrado para {type_lbl}.", "warn")
                     continue
 
-                r, preview_bytes, linhas = result
-                # Salva CSV temporário
+                # Grava CSV combinado
+                combined = header_line + "\n" + "\n".join(all_data_lines) + "\n"
                 tmp = tempfile.NamedTemporaryFile(
                     delete=False, suffix=".csv",
                     prefix=f"mk_{type_key}_",
+                    mode="w", encoding="utf-8-sig",
                 )
-                tmp.write(preview_bytes)
-                total_bytes = len(preview_bytes)
-                for chunk in r.iter_content(chunk_size=1024 * 64):
-                    if chunk:
-                        tmp.write(chunk)
-                        total_bytes += len(chunk)
+                tmp.write(combined)
                 tmp.close()
-
-                self._mk_log(f"  ✅ {total_bytes/1024:.1f} KB → {tmp.name}", "ok")
+                self._mk_log(f"  ✅ {len(all_data_lines)} linhas → {tmp.name}", "ok")
                 added_files.append(tmp.name)
 
             # Adiciona todos à fila sem processar
