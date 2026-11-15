@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "Umbrela Analytics"
-APP_VERSION = "8.18"
+APP_VERSION = "8.19"
 GITHUB_REPO = "jsilvacps/umbrela-analytics"   # repositório público de releases
 DEFAULT_EXCLUDE = "OFFLINE, [LOCK.OFFLINE], [LOCK.LOGIN], LOGIN, LOGOUT"
 LOGO_FILE = "logo_umbrela_analytics.png"
@@ -3636,9 +3636,9 @@ class MacroLockAnalyzerApp:
                     CASE
                         WHEN DuracaoSegundos IS NOT NULL AND DuracaoSegundos >= 0
                         THEN printf('%02d:%02d:%02d',
-                            DuracaoSegundos / 3600,
-                            (DuracaoSegundos % 3600) / 60,
-                            DuracaoSegundos % 60)
+                            CAST(DuracaoSegundos / 3600 AS INTEGER),
+                            CAST((DuracaoSegundos % 3600) / 60 AS INTEGER),
+                            CAST(DuracaoSegundos % 60 AS INTEGER))
                         ELSE TempoFormatado
                     END AS Duracao
                 FROM (
