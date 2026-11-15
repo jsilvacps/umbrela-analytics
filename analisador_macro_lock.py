@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "Umbrela Analytics"
-APP_VERSION = "7.0"
+APP_VERSION = "8.17"
 GITHUB_REPO = "jsilvacps/umbrela-analytics"   # repositório público de releases
 DEFAULT_EXCLUDE = "OFFLINE, [LOCK.OFFLINE], [LOCK.LOGIN], LOGIN, LOGOUT"
 LOGO_FILE = "logo_umbrela_analytics.png"
@@ -1306,19 +1306,19 @@ class MacroLockAnalyzerApp:
                  font=("Segoe UI", 8, "bold")).pack(anchor="w", pady=(0, 6))
 
         _MK_REPORT_TYPES = [
-            ("sessions",     "📋 Atividades"),
-            ("applications", "💻 Aplicativos"),
+            ("activities",   "📋 Atividades"),
+            ("apps",         "💻 Aplicativos"),
             ("internet",     "🌐 Internet"),
             ("devices",      "🖨 Dispositivos"),
             ("files",        "📁 Arquivos"),
             ("productivity", "📈 Produtividade"),
-            ("inventory",    "🗂 Inventário"),
-            ("software",     "⚙ Software"),
         ]
         self._mk_type_vars = {}
+        self._mk_type_labels = {}
         for key, label in _MK_REPORT_TYPES:
-            var = tk.BooleanVar(value=(key == "sessions"))
+            var = tk.BooleanVar(value=(key == "activities"))
             self._mk_type_vars[key] = var
+            self._mk_type_labels[key] = label
             ttk.Checkbutton(left_col, text=label, variable=var).pack(anchor="w", pady=1)
 
         right_col = tk.Frame(cols, bg=c["card"])
@@ -1792,7 +1792,7 @@ class MacroLockAnalyzerApp:
             dt_end   = dt_end.replace(hour=23, minute=59, second=59)
 
             # Tipos selecionados
-            selected_types = [(k, v) for k, v in self._mk_type_vars.items() if v.get()]
+            selected_types = [(k, self._mk_type_labels.get(k, k)) for k, v in self._mk_type_vars.items() if v.get()]
             if not selected_types:
                 raise ValueError("Selecione ao menos um tipo de relatório.")
 
