@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "Umbrela Analytics"
-APP_VERSION = "8.21"
+APP_VERSION = "8.22"
 GITHUB_REPO = "jsilvacps/umbrela-analytics"   # repositório público de releases
 DEFAULT_EXCLUDE = "OFFLINE, [LOCK.OFFLINE], [LOCK.LOGIN], LOGIN, LOGOUT"
 LOGO_FILE = "logo_umbrela_analytics.png"
@@ -199,6 +199,7 @@ class MacroLockAnalyzerApp:
         self._mk_base_url = "https://dmsempresarial.makrolock.com.br"
         self._mk_group_computers: dict[str, list[str]] = {}  # group_id → [computer names]
         self._mk_id_to_name: dict[str, str] = {}  # numeric id → computer name
+        self._mk_computer_vars: dict[str, tk.BooleanVar] = {}  # computer_name → BooleanVar
         self._mk_date_start = tk.StringVar(value="")
         self._mk_date_end   = tk.StringVar(value="")
         self._mk_report_type = tk.StringVar(value="sessions")
@@ -1747,6 +1748,7 @@ class MacroLockAnalyzerApp:
                 for w in list(self._mk_groups_frame.winfo_children()):
                     w.destroy()
                 self._mk_group_vars.clear()
+                self._mk_computer_vars.clear()
 
                 tk.Label(self._mk_groups_frame, text="GRUPOS / COMPUTADORES", bg=c["card"], fg=c["muted"],
                          font=("Segoe UI", 8, "bold")).pack(anchor="w", pady=(0, 6))
@@ -1757,16 +1759,75 @@ class MacroLockAnalyzerApp:
                 else:
                     for g in groups:
                         gid  = str(g.get("id", g.get("_id", "")))
-                        name = g.get("name") or g.get("alias") or g.get("label") or gid
-                        var = tk.BooleanVar(value=True)
-                        self._mk_group_vars[gid] = (var, name)
+                        gname = g.get("name") or g.get("alias") or g.get("label") or gid
                         raw_ids = [str(x) for x in (g.get("computerIds") or [])]
-                        # Converte IDs numéricos para nomes reais se disponível
                         named = [id_to_name.get(cid, cid) for cid in raw_ids]
                         self._mk_group_computers[gid] = named
-                        self._mk_log(f"  {name}: {named}")
-                        ttk.Checkbutton(self._mk_groups_frame,
-                                        text=name, variable=var).pack(anchor="w", pady=1)
+                        self._mk_log(f"  {gname}: {named}")
+
+                        # Variável de grupo (Selecionar todos do grupo)
+                        g_var = tk.BooleanVar(value=True)
+                        self._mk_group_vars[gid] = (g_var, gname)
+
+                        # Frame do grupo (cabeçalho clicável + computadores)
+                        g_frame = tk.Frame(self._mk_groups_frame, bg=c["card"])
+                        g_frame.pack(fill="x", pady=(4, 0))
+
+                        expanded = tk.BooleanVar(value=True)
+                        children_frame = tk.Frame(g_frame, bg=c["card2"])
+
+                        def _toggle(ef=children_frame, ev=expanded):
+                            if ev.get():
+                                ef.pack_forget()
+                                ev.set(False)
+                            else:
+                                ef.pack(fill="x", padx=(14, 0))
+                                ev.set(True)
+
+                        # Cabeçalho do grupo
+                        hdr = tk.Frame(g_frame, bg=c["card"])
+                        hdr.pack(fill="x")
+                        arrow_lbl = tk.Label(hdr, text="▼", bg=c["card"], fg=c["accent"],
+                                             font=("Segoe UI", 8), cursor="hand2")
+                        arrow_lbl.pack(side="left")
+
+                        def _toggle_with_arrow(ef=children_frame, ev=expanded, al=arrow_lbl):
+                            if ev.get():
+                                ef.pack_forget()
+                                ev.set(False)
+                                al.configure(text="▶")
+                            else:
+                                ef.pack(fill="x", padx=(14, 0))
+                                ev.set(True)
+                                al.configure(text="▼")
+
+                        arrow_lbl.bind("<Button-1>", lambda e, f=_toggle_with_arrow: f())
+
+                        # Checkbox do grupo (seleciona/desmarca todos filhos)
+                        def _on_group_toggle(gv=g_var, named_=named):
+                            val = gv.get()
+                            for cn in named_:
+                                if cn in self._mk_computer_vars:
+                                    self._mk_computer_vars[cn].set(val)
+
+                        ttk.Checkbutton(hdr, text=gname, variable=g_var,
+                                        command=lambda gv=g_var, n=named: _on_group_toggle(gv, n)
+                                        ).pack(side="left", padx=(2, 0))
+
+                        # Frame de computadores (expandido por padrão)
+                        children_frame.pack(fill="x", padx=(14, 0))
+
+                        for cname in named:
+                            cv = tk.BooleanVar(value=True)
+                            self._mk_computer_vars[cname] = cv
+
+                            def _on_comp_toggle(gv=g_var, named_=named):
+                                all_on = all(self._mk_computer_vars[cn].get() for cn in named_ if cn in self._mk_computer_vars)
+                                gv.set(all_on)
+
+                            ttk.Checkbutton(children_frame, text=cname, variable=cv,
+                                            command=lambda gv=g_var, n=named: _on_comp_toggle(gv, n)
+                                            ).pack(anchor="w", pady=1)
 
                 ttk.Button(self._mk_groups_frame, text="🔄 Recarregar grupos",
                            style="Ghost.TButton",
@@ -1879,16 +1940,18 @@ class MacroLockAnalyzerApp:
                 self._mk_log(f"  ⚠ Só cabeçalho.", "warn")
                 return None
 
-            # Recolhe todos os computerIds dos grupos selecionados (sem duplicatas)
-            all_computer_ids = []
-            seen_cids = set()
-            for gid, gname in selected_groups:
-                if gid and gid in self._mk_group_computers:
-                    for cid in self._mk_group_computers[gid]:
-                        if cid not in seen_cids:
-                            seen_cids.add(cid)
-                            all_computer_ids.append(cid)
-            self._mk_log(f"Computadores encontrados: {all_computer_ids or ['(sem filtro)']}")
+            # Recolhe computadores selecionados individualmente
+            all_computer_ids = [cname for cname, cv in self._mk_computer_vars.items() if cv.get()]
+            if not all_computer_ids:
+                # Fallback: todos os computadores dos grupos selecionados
+                seen_cids: set = set()
+                for gid, gname in selected_groups:
+                    if gid and gid in self._mk_group_computers:
+                        for cid in self._mk_group_computers[gid]:
+                            if cid not in seen_cids:
+                                seen_cids.add(cid)
+                                all_computer_ids.append(cid)
+            self._mk_log(f"Computadores selecionados: {all_computer_ids or ['(sem filtro)']}")
 
             total_types = len(selected_types)
             done = 0
