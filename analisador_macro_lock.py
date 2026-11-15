@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "Umbrela Analytics"
-APP_VERSION = "8.27"
+APP_VERSION = "8.28"
 GITHUB_REPO = "jsilvacps/umbrela-analytics"   # repositório público de releases
 DEFAULT_EXCLUDE = "OFFLINE, [LOCK.OFFLINE], [LOCK.LOGIN], LOGIN, LOGOUT"
 LOGO_FILE = "logo_umbrela_analytics.png"
@@ -1725,18 +1725,24 @@ class MacroLockAnalyzerApp:
             if rc.status_code == 200:
                 try:
                     cdata = rc.json()
-                    self._mk_log(f"computers raw: {str(cdata)[:500]}")
                     clist = cdata if isinstance(cdata, list) else (
                         cdata.get("data") or cdata.get("computers") or
                         cdata.get("items") or cdata.get("results") or []
                     )
+                    if clist:
+                        self._mk_log(f"computer[0] campos: {list(clist[0].keys())}")
                     for comp in (clist if isinstance(clist, list) else []):
                         cid = str(comp.get("id", comp.get("_id", "")))
                         cname = (comp.get("name") or comp.get("alias") or
                                  comp.get("hostname") or comp.get("label") or cid)
+                        # Tenta pegar nome do usuário logado
+                        uname = (comp.get("user") or comp.get("username") or
+                                 comp.get("lastUser") or comp.get("currentUser") or
+                                 comp.get("loggedUser") or comp.get("userLogin") or "")
+                        display = f"{uname} ({cname})" if uname else cname
                         if cid:
-                            id_to_name[cid] = cname
-                    self._mk_log(f"Computadores mapeados: {len(id_to_name)}  map={dict(list(id_to_name.items())[:5])}")
+                            id_to_name[cid] = display
+                    self._mk_log(f"Computadores mapeados: {len(id_to_name)}  ex={dict(list(id_to_name.items())[:3])}")
                 except Exception as ex:
                     self._mk_log(f"computers parse erro: {ex}  raw={rc.text[:300]}", "warn")
             self._mk_id_to_name = id_to_name  # guarda para uso no fetch
