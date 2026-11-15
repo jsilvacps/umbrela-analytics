@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "Umbrela Analytics"
-APP_VERSION = "8.20"
+APP_VERSION = "8.21"
 GITHUB_REPO = "jsilvacps/umbrela-analytics"   # repositório público de releases
 DEFAULT_EXCLUDE = "OFFLINE, [LOCK.OFFLINE], [LOCK.LOGIN], LOGIN, LOGOUT"
 LOGO_FILE = "logo_umbrela_analytics.png"
@@ -197,7 +197,8 @@ class MacroLockAnalyzerApp:
         self._mk_logged  = False
         self._mk_pass_md5: str = ""   # hash em memória para re-login automático
         self._mk_base_url = "https://dmsempresarial.makrolock.com.br"
-        self._mk_group_computers: dict[str, list[str]] = {}  # group_id → [computer_ids]
+        self._mk_group_computers: dict[str, list[str]] = {}  # group_id → [computer names]
+        self._mk_id_to_name: dict[str, str] = {}  # numeric id → computer name
         self._mk_date_start = tk.StringVar(value="")
         self._mk_date_end   = tk.StringVar(value="")
         self._mk_report_type = tk.StringVar(value="sessions")
@@ -1713,14 +1714,36 @@ class MacroLockAnalyzerApp:
                 self._mk_log(f"Grupos: erro {resp.text[:200]}", "error")
                 return
             data = resp.json()
-            # Formato esperado: lista de {id, name} ou {id, alias/name}
             groups = data if isinstance(data, list) else data.get("groups", data.get("data", []))
             self._mk_log(f"Grupos recebidos: {len(groups)}  raw: {str(groups)[:300]}")
+
+            # Busca lista de computadores para mapear ID numérico → nome real
+            id_to_name: dict[str, str] = {}
+            for ep_comp in ["/api/front/computers", "/api/front/computer/list", "/api/front/computerlist"]:
+                try:
+                    rc = self._mk_session.get(f"{self._mk_base_url}{ep_comp}", timeout=10)
+                    if rc.status_code == 200:
+                        cdata = rc.json()
+                        clist = cdata if isinstance(cdata, list) else cdata.get("data", cdata.get("computers", []))
+                        if isinstance(clist, list) and clist:
+                            for comp in clist:
+                                cid = str(comp.get("id", comp.get("_id", "")))
+                                cname = (comp.get("name") or comp.get("alias") or
+                                         comp.get("hostname") or comp.get("label") or cid)
+                                if cid:
+                                    id_to_name[cid] = cname
+                            self._mk_log(f"Computadores mapeados: {len(id_to_name)} via {ep_comp}")
+                            break
+                        self._mk_log(f"  {ep_comp} → vazio")
+                    else:
+                        self._mk_log(f"  {ep_comp} → HTTP {rc.status_code}")
+                except Exception as ex:
+                    self._mk_log(f"  {ep_comp} → erro: {ex}")
+            self._mk_id_to_name = id_to_name  # guarda para uso no fetch
 
             # Atualiza UI na thread principal
             def _update():
                 c = self.COLORS
-                # Remove widgets antigos (exceto o label de instrução e o botão recarregar)
                 for w in list(self._mk_groups_frame.winfo_children()):
                     w.destroy()
                 self._mk_group_vars.clear()
@@ -1737,7 +1760,11 @@ class MacroLockAnalyzerApp:
                         name = g.get("name") or g.get("alias") or g.get("label") or gid
                         var = tk.BooleanVar(value=True)
                         self._mk_group_vars[gid] = (var, name)
-                        self._mk_group_computers[gid] = [str(c) for c in (g.get("computerIds") or [])]
+                        raw_ids = [str(x) for x in (g.get("computerIds") or [])]
+                        # Converte IDs numéricos para nomes reais se disponível
+                        named = [id_to_name.get(cid, cid) for cid in raw_ids]
+                        self._mk_group_computers[gid] = named
+                        self._mk_log(f"  {name}: {named}")
                         ttk.Checkbutton(self._mk_groups_frame,
                                         text=name, variable=var).pack(anchor="w", pady=1)
 
