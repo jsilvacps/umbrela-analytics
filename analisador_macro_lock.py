@@ -130,7 +130,7 @@ MACROLOCK_COLUMNS = [
 
 EXPORT_COLUMNS = [
     "Data", "Hora", "DiaSemana", "Periodo", "Equipamento", "Usuario",
-    "Status", "Aplicativo", "CampoExtra", "JanelaEvento", "DuracaoSegundos", "TempoFormatado",
+    "Status", "Aplicativo", "CampoExtra", "JanelaEvento", "DuracaoSegundos", "Duracao",
 ]
 
 REPORTS = {
@@ -188,9 +188,11 @@ class MacroLockAnalyzerApp:
         # ── Integração Makrolock ──────────────────────────────────────────
         self._mk_session = None          # requests.Session autenticado
         self._mk_config_file = app_dir() / "mk_config.json"
-        saved_email = self._mk_load_email()
-        self._mk_email   = tk.StringVar(value=saved_email)
-        self._mk_pass    = tk.StringVar()
+        _cfg = self._mk_load_config()
+        self._mk_email      = tk.StringVar(value=_cfg.get("email", ""))
+        self._mk_save_pass_var = tk.BooleanVar(value=bool(_cfg.get("save_pass", False)))
+        _saved_pass = self._mk_load_saved_pass() if _cfg.get("save_pass") else ""
+        self._mk_pass       = tk.StringVar(value=_saved_pass)
         self._mk_status  = tk.StringVar(value="Não conectado")
         self._mk_logged  = False
         self._mk_pass_md5: str = ""   # hash em memória para re-login automático
@@ -619,7 +621,7 @@ class MacroLockAnalyzerApp:
         u_info.pack(side="right")
         tk.Label(u_info, text="Jean Silva", bg=c["sidebar"],
                  fg="#FFFFFF", font=("Segoe UI", 9, "bold")).pack(anchor="e")
-        tk.Label(u_info, text="TI · DMS Empresarial",
+        tk.Label(u_info, text="Analista de TI",
                  bg=c["sidebar"], fg=c["muted"],
                  font=("Segoe UI", 8)).pack(anchor="e")
 
@@ -1164,12 +1166,17 @@ class MacroLockAnalyzerApp:
         tk.Label(form, text="SENHA", bg=c["card"], fg=c["muted2"],
                  font=("Segoe UI", 8, "bold")).grid(row=3, column=0, sticky="w", pady=(0, 5))
         pass_entry = ttk.Entry(form, textvariable=self._mk_pass, width=38, show="•")
-        pass_entry.grid(row=4, column=0, sticky="ew", pady=(0, 24))
+        pass_entry.grid(row=4, column=0, sticky="ew", pady=(0, 10))
         pass_entry.bind("<Return>", lambda e: self._mk_login())
+
+        tk.Checkbutton(form, text="Salvar senha", variable=self._mk_save_pass_var,
+                       bg=c["card"], fg=c["muted"], selectcolor=c["card2"],
+                       activebackground=c["card"], activeforeground=c["muted"],
+                       font=("Segoe UI", 8), cursor="hand2").grid(row=5, column=0, sticky="w", pady=(0, 16))
 
         # Botão entrar — full width
         ttk.Button(form, text="  Entrar no Makrolock  ", style="Accent.TButton",
-                   command=self._mk_login).grid(row=5, column=0, sticky="ew")
+                   command=self._mk_login).grid(row=6, column=0, sticky="ew")
 
         # ── Configs avançadas — colapsável, dark ────────────────────────────
         cfg_toggle_frm = tk.Frame(brand_inner, bg=c["card"], pady=12)
@@ -1516,23 +1523,45 @@ class MacroLockAnalyzerApp:
         return frame
 
     # ── Métodos de integração Makrolock ───────────────────────────────────
-    def _mk_load_email(self) -> str:
+    def _mk_load_config(self) -> dict:
         import json
         try:
             if self._mk_config_file.exists():
-                return json.loads(self._mk_config_file.read_text(encoding="utf-8")).get("email", "")
+                return json.loads(self._mk_config_file.read_text(encoding="utf-8"))
         except Exception:
             pass
-        return ""
+        return {}
 
-    def _mk_save_email(self, email: str):
-        import json
+    def _mk_load_email(self) -> str:
+        return self._mk_load_config().get("email", "")
+
+    def _mk_load_saved_pass(self) -> str:
+        import base64
+        try:
+            v = self._mk_load_config().get("pass_b64", "")
+            return base64.b64decode(v.encode()).decode() if v else ""
+        except Exception:
+            return ""
+
+    def _mk_save_config(self, email: str, password: str = "", save_pass: bool = False):
+        import json, base64
+        data = self._mk_load_config()
+        data["email"] = email
+        if save_pass and password:
+            data["pass_b64"] = base64.b64encode(password.encode()).decode()
+            data["save_pass"] = True
+        else:
+            data.pop("pass_b64", None)
+            data["save_pass"] = False
         try:
             self._mk_config_file.write_text(
-                json.dumps({"email": email}, ensure_ascii=False), encoding="utf-8"
+                json.dumps(data, ensure_ascii=False), encoding="utf-8"
             )
         except Exception:
             pass
+
+    def _mk_save_email(self, email: str):
+        self._mk_save_config(email, save_pass=False)
 
     def _mk_log(self, msg: str, level: str = "info"):
         """Escreve no log da aba Makrolock. level: 'info' | 'ok' | 'warn' | 'error'"""
@@ -1629,7 +1658,7 @@ class MacroLockAnalyzerApp:
                 self._mk_base_url = base
                 self._mk_logged = True
                 self._mk_pass_md5 = passwd_md5
-                self._mk_save_email(email)
+                self._mk_save_config(email, self._mk_pass.get().strip(), self._mk_save_pass_var.get())
                 self._mk_status.set(f"✅  Conectado como {email}")
                 self._mk_badge.configure(bg=self.COLORS["ok"])
                 self._mk_log(f"Login bem-sucedido!", "ok")
@@ -2696,6 +2725,21 @@ class MacroLockAnalyzerApp:
         tk.Label(top_r, text="📋  Relatórios", bg=c["bg"], fg=c["text"],
                  font=("Segoe UI", 15, "bold")).pack(side="left")
 
+        nb = ttk.Notebook(parent)
+        nb.pack(fill="both", expand=True)
+
+        tab_padrao    = ttk.Frame(nb, style="Card.TFrame", padding=(16, 14))
+        tab_especif   = ttk.Frame(nb, style="Card.TFrame", padding=(16, 14))
+        nb.add(tab_padrao,  text="  Padrão  ")
+        nb.add(tab_especif, text="  Específicos  ")
+
+        self._build_reports_padrao(tab_padrao)
+        self._build_reports_especificos(tab_especif)
+        return  # _build_reports_padrao / _especificos constroem o restante
+
+    def _build_reports_padrao(self, parent):
+        c = self.COLORS
+
         REPORT_HINTS = {
             "fora_horario":             "Traz tudo FORA do horário comercial (ex: 18:00 → 07:00).",
             "fim_semana":               "Apenas sábado e domingo. Horário não é usado.",
@@ -2769,6 +2813,201 @@ class MacroLockAnalyzerApp:
         action.pack(fill="x", pady=(12, 0))
         ttk.Button(action, text="▶  Gerar Relatório", style="Accent.TButton", command=self.start_report).pack(side="left")
         ttk.Button(action, text="Abrir pasta", style="Ghost.TButton", command=self.open_reports_folder).pack(side="left", padx=(8, 0))
+
+    def _build_reports_especificos(self, parent):
+        c = self.COLORS
+
+        tk.Label(parent, text="Relatório Específicos — fora do horário + finais de semana",
+                 bg=c["card"], fg=c["muted"], font=("Segoe UI", 9)).pack(anchor="w", pady=(0, 12))
+
+        outer, card = self._card(parent)
+        outer.pack(fill="x", pady=(0, 12))
+
+        # ── Usuários ──────────────────────────────────────────────────────
+        self._section_label(card, "USUÁRIOS (selecione um ou mais)")
+
+        users_frame = tk.Frame(card, bg=c["card"])
+        users_frame.pack(fill="x", pady=(0, 4))
+
+        self._esp_user_listbox = tk.Listbox(
+            users_frame, selectmode="multiple", height=8,
+            bg=c["card2"], fg=c["text"], selectbackground=c["teal"],
+            selectforeground="#FFFFFF", font=("Segoe UI", 9),
+            highlightthickness=1, highlightbackground=c["border2"],
+            activestyle="none",
+        )
+        sb = ttk.Scrollbar(users_frame, orient="vertical", command=self._esp_user_listbox.yview)
+        self._esp_user_listbox.configure(yscrollcommand=sb.set)
+        self._esp_user_listbox.pack(side="left", fill="both", expand=True)
+        sb.pack(side="right", fill="y")
+
+        btn_load = ttk.Button(card, text="↻  Carregar usuários da base",
+                              command=self._esp_load_users)
+        btn_load.pack(anchor="w", pady=(6, 0))
+
+        tk.Frame(card, bg=c["border"], height=1).pack(fill="x", pady=(12, 12))
+
+        # ── Filtros de período ────────────────────────────────────────────
+        self._section_label(card, "FILTROS DE PERÍODO")
+
+        filters_frame = tk.Frame(card, bg=c["card"])
+        filters_frame.pack(anchor="w", pady=(0, 12))
+
+        self._esp_seg_sex_var  = tk.BooleanVar(value=True)
+        self._esp_sab_dom_var  = tk.BooleanVar(value=True)
+        self._esp_seg_sex_start = tk.StringVar(value="18:00")
+        self._esp_seg_sex_end   = tk.StringVar(value="00:00")
+
+        # Seg-Sex
+        row1 = tk.Frame(filters_frame, bg=c["card"])
+        row1.pack(anchor="w", pady=(0, 6))
+        tk.Checkbutton(row1, text="Seg a Sex  —  das", variable=self._esp_seg_sex_var,
+                       bg=c["card"], fg=c["text"], selectcolor=c["card2"],
+                       activebackground=c["card"], font=("Segoe UI", 9),
+                       cursor="hand2").pack(side="left")
+        ttk.Entry(row1, textvariable=self._esp_seg_sex_start, width=7).pack(side="left", padx=(6, 2))
+        tk.Label(row1, text="até", bg=c["card"], fg=c["muted"], font=("Segoe UI", 9)).pack(side="left", padx=(0, 4))
+        ttk.Entry(row1, textvariable=self._esp_seg_sex_end, width=7).pack(side="left")
+
+        # Sab-Dom
+        row2 = tk.Frame(filters_frame, bg=c["card"])
+        row2.pack(anchor="w")
+        tk.Checkbutton(row2, text="Sáb e Dom  —  Horário completo (dia todo)",
+                       variable=self._esp_sab_dom_var,
+                       bg=c["card"], fg=c["text"], selectcolor=c["card2"],
+                       activebackground=c["card"], font=("Segoe UI", 9),
+                       cursor="hand2").pack(side="left")
+
+        tk.Frame(card, bg=c["border"], height=1).pack(fill="x", pady=(0, 12))
+
+        # ── Formato ───────────────────────────────────────────────────────
+        self._section_label(card, "FORMATO DE SAÍDA")
+        self._esp_fmt_var = tk.StringVar(value="xlsx")
+        fmt_row = tk.Frame(card, bg=c["card"])
+        fmt_row.pack(anchor="w", pady=(0, 4))
+        ttk.Radiobutton(fmt_row, text="Excel .xlsx", variable=self._esp_fmt_var, value="xlsx").pack(side="left")
+        ttk.Radiobutton(fmt_row, text="CSV .csv",    variable=self._esp_fmt_var, value="csv").pack(side="left", padx=(16, 0))
+
+        # ── Botão gerar ───────────────────────────────────────────────────
+        action = tk.Frame(parent, bg=c["card"])
+        action.pack(fill="x", pady=(12, 0))
+        ttk.Button(action, text="▶  Gerar Relatório Específicos",
+                   style="Accent.TButton",
+                   command=self._esp_start_report).pack(side="left")
+        ttk.Button(action, text="Abrir pasta", style="Ghost.TButton",
+                   command=self.open_reports_folder).pack(side="left", padx=(8, 0))
+
+    def _esp_load_users(self):
+        """Carrega lista de usuários únicos do banco tratado."""
+        try:
+            base = Path(self.output_path.get())
+            db_candidates = sorted(base.rglob("base_macro_lock.duckdb"),
+                                   key=lambda p: p.stat().st_mtime, reverse=True)
+            if not db_candidates:
+                messagebox.showwarning("Sem base", "Processe os arquivos primeiro para carregar os usuários.")
+                return
+            con = self._connect_db(db_candidates[0].parent)
+            users = [r[0] for r in con.execute(
+                "SELECT DISTINCT Usuario FROM tratado WHERE Usuario IS NOT NULL ORDER BY Usuario"
+            ).fetchall()]
+            con.close()
+            self._esp_user_listbox.delete(0, "end")
+            for u in users:
+                self._esp_user_listbox.insert("end", u)
+            messagebox.showinfo("Usuários", f"{len(users)} usuário(s) carregado(s).")
+        except Exception as e:
+            messagebox.showerror("Erro", str(e))
+
+    def _esp_start_report(self):
+        threading.Thread(target=self._esp_generate_report, daemon=True).start()
+
+    def _esp_generate_report(self):
+        try:
+            # Usuários selecionados
+            sel_indices = self._esp_user_listbox.curselection()
+            if not sel_indices:
+                messagebox.showwarning("Específicos", "Selecione ao menos um usuário.")
+                return
+            users = [self._esp_user_listbox.get(i) for i in sel_indices]
+
+            # Monta WHERE
+            user_placeholders = ", ".join(["?" for _ in users])
+            conditions = []
+            params = []
+
+            use_seg_sex = self._esp_seg_sex_var.get()
+            use_sab_dom = self._esp_sab_dom_var.get()
+            start_t = self._validate_time(self._esp_seg_sex_start.get(), "Horário inicial Seg-Sex")
+            end_t   = self._validate_time(self._esp_seg_sex_end.get(),   "Horário final Seg-Sex")
+
+            if use_seg_sex:
+                # Seg-Sex: 18:00 → 00:00 (ou final da madrugada)
+                # Lógica: hora >= 18:00 OU hora < 00:00 (madrugada)
+                if start_t <= end_t:
+                    # ex: 08:00–12:00 (intervalo normal)
+                    cond_seg_sex = (
+                        "( CAST(strftime(DataHoraTs, '%w') AS INTEGER) BETWEEN 1 AND 5 "
+                        f"AND CAST(DataHoraTs AS TIME) >= TIME '{start_t}' "
+                        f"AND CAST(DataHoraTs AS TIME) < TIME '{end_t}' )"
+                    )
+                else:
+                    # ex: 18:00–00:00 (passa da meia-noite)
+                    cond_seg_sex = (
+                        "( CAST(strftime(DataHoraTs, '%w') AS INTEGER) BETWEEN 1 AND 5 "
+                        f"AND ( CAST(DataHoraTs AS TIME) >= TIME '{start_t}' "
+                        f"   OR CAST(DataHoraTs AS TIME) < TIME '{end_t}' ) )"
+                    )
+                conditions.append(cond_seg_sex)
+
+            if use_sab_dom:
+                conditions.append(
+                    "( CAST(strftime(DataHoraTs, '%w') AS INTEGER) IN (0, 6) )"
+                )
+
+            if not conditions:
+                messagebox.showwarning("Específicos", "Selecione ao menos um filtro de período.")
+                return
+
+            period_where = "(" + " OR ".join(conditions) + ")"
+            where = f"Usuario IN ({user_placeholders}) AND {period_where}"
+            params = list(users)
+
+            # Banco
+            base = Path(self.output_path.get())
+            db_candidates = sorted(base.rglob("base_macro_lock.duckdb"),
+                                   key=lambda p: p.stat().st_mtime, reverse=True)
+            if not db_candidates:
+                messagebox.showerror("Erro", "Nenhuma base encontrada. Processe os arquivos primeiro.")
+                return
+            output_dir  = db_candidates[0].parent
+            reports_dir = output_dir / "relatorios"
+            reports_dir.mkdir(parents=True, exist_ok=True)
+
+            con = self._connect_db(output_dir)
+            query = f"SELECT {', '.join(EXPORT_COLUMNS)} FROM tratado WHERE {where} ORDER BY Usuario, DataHoraTs"
+            total = con.execute(f"SELECT COUNT(*) FROM ({query}) q", params).fetchone()[0]
+            self.set_status(f"[Específicos] {total:,} registros encontrados".replace(",", "."), 50)
+
+            stamp     = datetime.now().strftime("%Y%m%d_%H%M%S")
+            fmt       = self._esp_fmt_var.get()
+            out_path  = reports_dir / f"especificos_{stamp}.{fmt}"
+
+            if fmt == "csv":
+                # Para CSV com params, copia para tabela temp
+                con.execute("DROP TABLE IF EXISTS _esp_tmp")
+                con.execute(f"CREATE TEMP TABLE _esp_tmp AS SELECT {', '.join(EXPORT_COLUMNS)} FROM tratado WHERE {where}", params)
+                con.execute(f"COPY _esp_tmp TO '{sql_path(out_path)}' (HEADER, DELIMITER ';')")
+            else:
+                self._export_query_to_xlsx(con, query, params, EXPORT_COLUMNS, out_path,
+                                           "Específicos", total)
+
+            con.close()
+            self.set_status(f"[Específicos] Relatório gerado: {out_path}", 100)
+            messagebox.showinfo("Relatório gerado",
+                                f"Relatório gerado com sucesso!\n\n{out_path}\n\n{total:,} registros.".replace(",", "."))
+        except Exception as e:
+            self.set_status("Erro ao gerar relatório Específicos.", 0)
+            messagebox.showerror("Erro", str(e))
 
     def select_file(self):
         """Mantido para compatibilidade; redireciona para seleção múltipla."""
@@ -3211,14 +3450,14 @@ class MacroLockAnalyzerApp:
         # JanelaEvento / Atividade / URL / Título / Janela / Descrição
         c_janela    = find_col("atividade", "url", "título", "titulo", "janela", "janelae vento",
                                "janelae", "janelaevento", "descrição", "descricao", "detalhes", "detail")
-        # CampoExtra — qualquer coluna extra não mapeada
-        mapped = {c_datahora, c_equip, c_usuario, c_status, c_aplicativo, c_janela}
-        extras = [f'"{c}"' for c in raw_cols if f'"{c}"' not in mapped]
-        c_extra = f"CONCAT_WS(' | ', {', '.join(extras)})" if extras else "''"
         # Duração
         c_duracao   = find_col("duração", "duracao", "duration", "tempo", "segundos", "time")
         # Tempo formatado
         c_tempo_fmt = find_col("tempo formatado", "tempoformatado", "formatted", "hh:mm:ss")
+        # CampoExtra — colunas não mapeadas em nenhuma das anteriores
+        mapped = {c_datahora, c_equip, c_usuario, c_status, c_aplicativo, c_janela, c_duracao, c_tempo_fmt}
+        extras = [f'"{c}"' for c in raw_cols if f'"{c}"' not in mapped and f'"{c}"' != "''"]
+        c_extra = f"CONCAT_WS(' | ', {', '.join(extras)})" if extras else "''"
 
         # Detecta tipo para log
         tipo_csv = "Internet" if "host" in col_lower or "url" in col_lower else \
@@ -3319,7 +3558,7 @@ class MacroLockAnalyzerApp:
                 CREATE TABLE tratado AS
                 SELECT
                     DataHoraTs,
-                    CAST(DataHoraTs AS DATE)::VARCHAR AS Data,
+                    strftime(DataHoraTs, '%d-%m-%Y') AS Data,
                     strftime(DataHoraTs, '%H:%M:%S') AS Hora,
                     CASE CAST(strftime(DataHoraTs, '%w') AS INTEGER)
                         WHEN 0 THEN 'Domingo'
@@ -3343,7 +3582,14 @@ class MacroLockAnalyzerApp:
                     CampoExtra,
                     JanelaEvento,
                     DuracaoSegundos,
-                    TempoFormatado
+                    CASE
+                        WHEN DuracaoSegundos IS NOT NULL AND DuracaoSegundos >= 0
+                        THEN printf('%02d:%02d:%02d',
+                            DuracaoSegundos / 3600,
+                            (DuracaoSegundos % 3600) / 60,
+                            DuracaoSegundos % 60)
+                        ELSE TempoFormatado
+                    END AS Duracao
                 FROM (
                     SELECT
                         COALESCE(
