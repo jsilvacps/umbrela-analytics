@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "Umbrela Analytics"
-APP_VERSION = "8.29"
+APP_VERSION = "8.30"
 GITHUB_REPO = "jsilvacps/umbrela-analytics"   # repositório público de releases
 DEFAULT_EXCLUDE = "OFFLINE, [LOCK.OFFLINE], [LOCK.LOGIN], LOGIN, LOGOUT"
 LOGO_FILE = "logo_umbrela_analytics.png"
@@ -1896,8 +1896,10 @@ class MacroLockAnalyzerApp:
                 for gid, (var, name) in self._mk_group_vars.items():
                     if var.get():
                         selected_groups.append((gid, name))
-                if not selected_groups:
-                    raise ValueError("Selecione ao menos um grupo.")
+                # Só exige grupo se nenhum computador individual estiver selecionado
+                any_computer_selected = any(cv.get() for cv in self._mk_computer_vars.values())
+                if not selected_groups and not any_computer_selected:
+                    raise ValueError("Selecione ao menos um grupo ou computador.")
             else:
                 selected_groups = [(None, "Todos")]
 
