@@ -766,7 +766,7 @@ class MacroLockAnalyzerApp:
                 w.bind("<Leave>", _hover_out)
 
         # Separador + versão no rodapé da sidebar
-        tk.Label(sidebar, text=f"v{APP_VERSION} · © 2025 DMS",
+        tk.Label(sidebar, text=f"v{APP_VERSION} · © 2026 Jean Silva",
                  bg=c["sidebar"], fg="#2D5A8A",
                  font=("Segoe UI", 7)).pack(side="bottom", pady=(4, 8))
 
