@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "Umbrela Analytics"
-APP_VERSION = "8.23"
+APP_VERSION = "8.24"
 GITHUB_REPO = "jsilvacps/umbrela-analytics"   # repositório público de releases
 DEFAULT_EXCLUDE = "OFFLINE, [LOCK.OFFLINE], [LOCK.LOGIN], LOGIN, LOGOUT"
 LOGO_FILE = "logo_umbrela_analytics.png"
@@ -1906,43 +1906,65 @@ class MacroLockAnalyzerApp:
             self._mk_log(f"Tipos: {[t for t,_ in selected_types]}  |  Grupos: {[n for _,n in selected_groups]}")
 
             added_files = []
+            PAGE_SIZE = 1000  # registros por página
 
-            def _try_download(type_key, extra_params, label_suffix):
-                """Tenta baixar CSV do endpoint de export. Retorna (bytes, linhas) ou None."""
-                ep = f"{base}/api/front/reports/export"
-                params = {
-                    "type":   type_key,
-                    "format": "csv",
-                    "from":   from_s,
-                    "to":     to_s,
-                    "lang":   "pt",
-                    "theme":  "light",
+            def _fetch_all_pages(type_key, computer=None):
+                """Busca todas as páginas do endpoint JSON e retorna lista de registros."""
+                ep = f"{base}/api/front/reports"
+                base_params = {
+                    "type":      type_key,
+                    "from":      from_s,
+                    "to":        to_s,
+                    "size":      PAGE_SIZE,
+                    "sortBy":    "timestamp",
+                    "sortDir":   "asc",
                 }
-                params.update(extra_params)
-                param_str = " ".join(f"{k}={v}" for k, v in extra_params.items())
-                self._mk_log(f"  GET /export  {param_str}")
-                _r = self._mk_session.get(ep, params=params, timeout=120, stream=True)
-                self._mk_log(f"  HTTP {_r.status_code}  {_r.headers.get('Content-Type','?')}")
-                if _r.status_code != 200:
-                    self._mk_log(f"  ⚠ {_r.text[:200]}", "warn")
-                    return None
-                _preview = b""
-                for chunk in _r.iter_content(chunk_size=4096):
-                    _preview += chunk
-                    if len(_preview) >= 4096:
+                if computer:
+                    base_params["computer"] = computer
+                all_records = []
+                page = 1
+                total_pages = 1
+                while page <= total_pages:
+                    params = {**base_params, "page": page}
+                    _r = self._mk_session.get(ep, params=params, timeout=60)
+                    if _r.status_code != 200:
+                        self._mk_log(f"    p{page} HTTP {_r.status_code}: {_r.text[:100]}", "warn")
                         break
-                _text = _preview.decode("utf-8", errors="replace")
-                _linhas = [l for l in _text.splitlines() if l.strip()]
-                self._mk_log(f"  Prévia ({len(_preview)}B, {len(_linhas)}L): {_text[:300]}")
-                if len(_linhas) > 1:
-                    return (_r, _preview, _linhas)
-                self._mk_log(f"  ⚠ Só cabeçalho.", "warn")
-                return None
+                    try:
+                        jdata = _r.json()
+                    except Exception:
+                        self._mk_log(f"    p{page} JSON inválido: {_r.text[:100]}", "warn")
+                        break
+                    records = jdata.get("data", [])
+                    total_items = jdata.get("total", 0)
+                    total_pages = max(1, -(-total_items // PAGE_SIZE))  # ceil
+                    all_records.extend(records)
+                    if page == 1:
+                        self._mk_log(f"    total={total_items}  páginas={total_pages}")
+                    page += 1
+                return all_records
+
+            def _record_to_csv_line(rec):
+                """Converte registro JSON para linha CSV com separador ;"""
+                def _esc(v):
+                    s = str(v) if v is not None else ""
+                    if ";" in s or '"' in s or "\n" in s:
+                        s = '"' + s.replace('"', '""') + '"'
+                    return s
+                # Campos que o portal exporta
+                ts   = rec.get("timestamp", rec.get("date", ""))
+                comp = rec.get("computer", rec.get("computerName", ""))
+                user = rec.get("user",     rec.get("username", ""))
+                stat = rec.get("status",   "")
+                dur  = rec.get("duration", rec.get("time", ""))
+                cat  = rec.get("category", "")
+                act  = rec.get("activity", rec.get("title", ""))
+                app  = rec.get("app",      rec.get("process", ""))
+                return ";".join(_esc(v) for v in [ts, comp, user, stat, dur, cat, act, app])
 
             # Recolhe computadores selecionados individualmente
             all_computer_ids = [cname for cname, cv in self._mk_computer_vars.items() if cv.get()]
             if not all_computer_ids:
-                # Fallback: todos os computadores dos grupos selecionados
                 seen_cids: set = set()
                 for gid, gname in selected_groups:
                     if gid and gid in self._mk_group_computers:
@@ -1950,7 +1972,9 @@ class MacroLockAnalyzerApp:
                             if cid not in seen_cids:
                                 seen_cids.add(cid)
                                 all_computer_ids.append(cid)
-            self._mk_log(f"Computadores selecionados: {all_computer_ids or ['(sem filtro)']}")
+            self._mk_log(f"Computadores: {all_computer_ids or ['(todos)']}")
+
+            CSV_HEADER = "Data/Hora;Computador;Usuário;Status;Duração;Categoria;Atividade;App"
 
             total_types = len(selected_types)
             done = 0
@@ -1960,55 +1984,31 @@ class MacroLockAnalyzerApp:
                 self._mk_prog_lbl.set(f"[{done}/{total_types}] {type_lbl}")
                 self._mk_log(f"\nBaixando: [{done}/{total_types}] {type_lbl}")
 
-                # Baixa um CSV por computador e combina num único arquivo
-                header_line = None
                 all_data_lines = []
-
                 targets = all_computer_ids if all_computer_ids else [None]
-                for cid in targets:
-                    extra = {"computer": cid} if cid else {}
-                    self._mk_log(f"  computer={cid or 'todos'}")
-                    result = _try_download(type_key, extra, str(cid or ""))
-                    if not result:
-                        continue
-                    r, preview_bytes, linhas = result
-                    # Lê o restante do stream
-                    rest = b""
-                    for chunk in r.iter_content(chunk_size=1024 * 64):
-                        if chunk:
-                            rest += chunk
-                    full_text = (preview_bytes + rest).decode("utf-8-sig", errors="replace")
-                    rows = [l for l in full_text.splitlines() if l.strip()]
-                    if not rows:
-                        continue
-                    if header_line is None:
-                        header_line = rows[0]
-                    # Pula cabeçalho nas linhas seguintes
-                    data_rows = rows[1:] if rows[0] == header_line else rows
-                    all_data_lines.extend(data_rows)
-                    self._mk_log(f"    +{len(data_rows)} linhas", "ok")
+                for idx, cid in enumerate(targets):
+                    self._mk_log(f"  [{idx+1}/{len(targets)}] computer={cid or 'todos'}")
+                    records = _fetch_all_pages(type_key, computer=cid)
+                    if records:
+                        for rec in records:
+                            all_data_lines.append(_record_to_csv_line(rec))
+                        self._mk_log(f"    +{len(records)} registros", "ok")
+                    else:
+                        self._mk_log(f"    sem dados")
 
-                if not all_data_lines or header_line is None:
-                    # Fallback: tenta sem filtro de computer
-                    self._mk_log(f"  sem filtro")
-                    result = _try_download(type_key, {}, "")
-                    if result:
-                        r, preview_bytes, linhas = result
-                        rest = b""
-                        for chunk in r.iter_content(chunk_size=1024 * 64):
-                            if chunk:
-                                rest += chunk
-                        full_text = (preview_bytes + rest).decode("utf-8-sig", errors="replace")
-                        rows = [l for l in full_text.splitlines() if l.strip()]
-                        header_line = rows[0] if rows else None
-                        all_data_lines = rows[1:] if len(rows) > 1 else []
+                if not all_data_lines:
+                    # Fallback: sem filtro de computer
+                    self._mk_log(f"  fallback sem filtro")
+                    records = _fetch_all_pages(type_key, computer=None)
+                    for rec in records:
+                        all_data_lines.append(_record_to_csv_line(rec))
 
-                if not all_data_lines or header_line is None:
+                if not all_data_lines:
                     self._mk_log(f"  ⚠ Nenhum dado encontrado para {type_lbl}.", "warn")
                     continue
 
                 # Grava CSV combinado
-                combined = header_line + "\n" + "\n".join(all_data_lines) + "\n"
+                combined = CSV_HEADER + "\n" + "\n".join(all_data_lines) + "\n"
                 tmp = tempfile.NamedTemporaryFile(
                     delete=False, suffix=".csv",
                     prefix=f"mk_{type_key}_",
