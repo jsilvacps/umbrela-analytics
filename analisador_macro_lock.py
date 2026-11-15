@@ -1758,10 +1758,14 @@ class MacroLockAnalyzerApp:
                 selected_groups = [(None, "Todos")]
 
             base = self._mk_base_url
-            from_ms = int(dt_start.timestamp() * 1000)
-            to_ms   = int(dt_end.timestamp() * 1000)
+            from_s = int(dt_start.timestamp())
+            to_s   = int(dt_end.timestamp())
+            # Mantém também versão ms caso o endpoint de export precise
+            from_ms = from_s * 1000
+            to_ms   = to_s   * 1000
 
             self._mk_log(f"Período: {dt_start.strftime('%d/%m/%Y')} → {dt_end.strftime('%d/%m/%Y')}")
+            self._mk_log(f"from_s={from_s}  to_s={to_s}  from_ms={from_ms}  to_ms={to_ms}")
             self._mk_log(f"Tipos: {[t for t,_ in selected_types]}  |  Grupos: {[n for _,n in selected_groups]}")
 
             total_combos = len(selected_types) * len(selected_groups)
@@ -1777,54 +1781,58 @@ class MacroLockAnalyzerApp:
                     self._mk_prog_lbl.set(label)
                     self._mk_log(f"Baixando: {label}")
 
-                    params = {
-                        "type":   type_key,
-                        "format": "csv",
-                        "from":   from_ms,
-                        "to":     to_ms,
-                        "lang":   "pt",
-                        "theme":  "light",
-                    }
-                    if group_id:
-                        params["group"] = group_id
-
-                    self._mk_log(f"  GET /api/front/reports/export  params={params}")
-                    resp = self._mk_session.get(
-                        f"{base}/api/front/reports/export",
-                        params=params, timeout=120, stream=True,
-                    )
-                    self._mk_log(f"  HTTP {resp.status_code}  Content-Type: {resp.headers.get('Content-Type','?')}")
-
-                    if resp.status_code != 200:
-                        self._mk_log(f"  ⚠ Pulado: {resp.text[:200]}", "warn")
+                    # Tenta com segundos primeiro (como o portal web usa), depois ms
+                    resp = None
+                    for use_ms in (False, True):
+                        f_val = from_ms if use_ms else from_s
+                        t_val = to_ms   if use_ms else to_s
+                        params = {
+                            "type":   type_key,
+                            "format": "csv",
+                            "from":   f_val,
+                            "to":     t_val,
+                            "lang":   "pt",
+                            "theme":  "light",
+                        }
+                        if group_id:
+                            params["group"] = group_id
+                        self._mk_log(f"  GET /export  {'ms' if use_ms else 's'}  params={params}")
+                        r = self._mk_session.get(
+                            f"{base}/api/front/reports/export",
+                            params=params, timeout=120, stream=True,
+                        )
+                        self._mk_log(f"  HTTP {r.status_code}  Content-Type: {r.headers.get('Content-Type','?')}")
+                        # Lê preview para ver se tem dados
+                        preview_bytes = b""
+                        for chunk in r.iter_content(chunk_size=4096):
+                            preview_bytes += chunk
+                            if len(preview_bytes) >= 4096:
+                                break
+                        self._mk_log(f"  Prévia ({len(preview_bytes)}B): {preview_bytes[:300]}")
+                        if r.status_code == 200 and len(preview_bytes) > 100:
+                            resp = (r, preview_bytes)
+                            break
+                    if resp is None:
+                        self._mk_log(f"  ⚠ Nenhuma variante retornou dados.", "warn")
                         continue
+                    r, preview_bytes = resp
 
-                    # Salva CSV temporário
+                    # Salva CSV temporário (já lemos preview_bytes acima)
                     safe_group = group_name.replace(" ", "_")[:20]
                     tmp = tempfile.NamedTemporaryFile(
                         delete=False, suffix=".csv",
                         prefix=f"mk_{type_key}_{safe_group}_",
                     )
-                    total_bytes = 0
-                    for chunk in resp.iter_content(chunk_size=1024 * 64):
+                    tmp.write(preview_bytes)
+                    total_bytes = len(preview_bytes)
+                    for chunk in r.iter_content(chunk_size=1024 * 64):
                         if chunk:
                             tmp.write(chunk)
                             total_bytes += len(chunk)
                     tmp.close()
 
-                    # Prévia das primeiras linhas
-                    try:
-                        with open(tmp.name, "r", encoding="utf-8", errors="replace") as _f:
-                            preview = "".join(_f.readline() for _ in range(3))
-                        self._mk_log(f"  Prévia: {preview.strip()[:300]}")
-                    except Exception:
-                        pass
-
-                    if total_bytes < 50:
-                        self._mk_log(f"  ⚠ Vazio ({total_bytes}B) — sem dados para esse período/grupo.", "warn")
-                    else:
-                        self._mk_log(f"  ✅ {total_bytes/1024:.1f} KB → {tmp.name}", "ok")
-                        added_files.append(tmp.name)
+                    self._mk_log(f"  ✅ {total_bytes/1024:.1f} KB → {tmp.name}", "ok")
+                    added_files.append(tmp.name)
 
             # Adiciona todos à fila sem processar
             for f in added_files:
