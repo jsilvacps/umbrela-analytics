@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "Umbrela Analytics"
-APP_VERSION = "8.28"
+APP_VERSION = "8.29"
 GITHUB_REPO = "jsilvacps/umbrela-analytics"   # repositório público de releases
 DEFAULT_EXCLUDE = "OFFLINE, [LOCK.OFFLINE], [LOCK.LOGIN], LOGIN, LOGOUT"
 LOGO_FILE = "logo_umbrela_analytics.png"
@@ -1720,6 +1720,7 @@ class MacroLockAnalyzerApp:
 
             # Busca lista de computadores para mapear ID numérico → nome real
             id_to_name: dict[str, str] = {}
+            cname_to_display: dict[str, str] = {}  # nome real → label para UI
             rc = self._mk_session.get(f"{self._mk_base_url}/api/front/computers", timeout=10)
             self._mk_log(f"computers: HTTP {rc.status_code}  {rc.headers.get('Content-Type','?')}")
             if rc.status_code == 200:
@@ -1729,19 +1730,18 @@ class MacroLockAnalyzerApp:
                         cdata.get("data") or cdata.get("computers") or
                         cdata.get("items") or cdata.get("results") or []
                     )
-                    if clist:
-                        self._mk_log(f"computer[0] campos: {list(clist[0].keys())}")
                     for comp in (clist if isinstance(clist, list) else []):
                         cid = str(comp.get("id", comp.get("_id", "")))
                         cname = (comp.get("name") or comp.get("alias") or
                                  comp.get("hostname") or comp.get("label") or cid)
                         # Tenta pegar nome do usuário logado
-                        uname = (comp.get("user") or comp.get("username") or
-                                 comp.get("lastUser") or comp.get("currentUser") or
+                        uname = (comp.get("currentUser") or comp.get("user") or
+                                 comp.get("username") or comp.get("lastUser") or
                                  comp.get("loggedUser") or comp.get("userLogin") or "")
                         display = f"{uname} ({cname})" if uname else cname
                         if cid:
-                            id_to_name[cid] = display
+                            id_to_name[cid] = cname       # nome real para API
+                            cname_to_display[cname] = display  # label para UI
                     self._mk_log(f"Computadores mapeados: {len(id_to_name)}  ex={dict(list(id_to_name.items())[:3])}")
                 except Exception as ex:
                     self._mk_log(f"computers parse erro: {ex}  raw={rc.text[:300]}", "warn")
@@ -1830,7 +1830,8 @@ class MacroLockAnalyzerApp:
                                 all_on = all(self._mk_computer_vars[cn].get() for cn in named_ if cn in self._mk_computer_vars)
                                 gv.set(all_on)
 
-                            ttk.Checkbutton(children_frame, text=cname, variable=cv,
+                            clabel = cname_to_display.get(cname, cname)
+                            ttk.Checkbutton(children_frame, text=clabel, variable=cv,
                                             command=lambda gv=g_var, n=named: _on_comp_toggle(gv, n)
                                             ).pack(anchor="w", pady=1)
 
