@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "Umbrela Analytics"
-APP_VERSION = "8.22"
+APP_VERSION = "8.23"
 GITHUB_REPO = "jsilvacps/umbrela-analytics"   # repositório público de releases
 DEFAULT_EXCLUDE = "OFFLINE, [LOCK.OFFLINE], [LOCK.LOGIN], LOGIN, LOGOUT"
 LOGO_FILE = "logo_umbrela_analytics.png"
@@ -1720,26 +1720,25 @@ class MacroLockAnalyzerApp:
 
             # Busca lista de computadores para mapear ID numérico → nome real
             id_to_name: dict[str, str] = {}
-            for ep_comp in ["/api/front/computers", "/api/front/computer/list", "/api/front/computerlist"]:
+            rc = self._mk_session.get(f"{self._mk_base_url}/api/front/computers", timeout=10)
+            self._mk_log(f"computers: HTTP {rc.status_code}  {rc.headers.get('Content-Type','?')}")
+            if rc.status_code == 200:
                 try:
-                    rc = self._mk_session.get(f"{self._mk_base_url}{ep_comp}", timeout=10)
-                    if rc.status_code == 200:
-                        cdata = rc.json()
-                        clist = cdata if isinstance(cdata, list) else cdata.get("data", cdata.get("computers", []))
-                        if isinstance(clist, list) and clist:
-                            for comp in clist:
-                                cid = str(comp.get("id", comp.get("_id", "")))
-                                cname = (comp.get("name") or comp.get("alias") or
-                                         comp.get("hostname") or comp.get("label") or cid)
-                                if cid:
-                                    id_to_name[cid] = cname
-                            self._mk_log(f"Computadores mapeados: {len(id_to_name)} via {ep_comp}")
-                            break
-                        self._mk_log(f"  {ep_comp} → vazio")
-                    else:
-                        self._mk_log(f"  {ep_comp} → HTTP {rc.status_code}")
+                    cdata = rc.json()
+                    self._mk_log(f"computers raw: {str(cdata)[:500]}")
+                    clist = cdata if isinstance(cdata, list) else (
+                        cdata.get("data") or cdata.get("computers") or
+                        cdata.get("items") or cdata.get("results") or []
+                    )
+                    for comp in (clist if isinstance(clist, list) else []):
+                        cid = str(comp.get("id", comp.get("_id", "")))
+                        cname = (comp.get("name") or comp.get("alias") or
+                                 comp.get("hostname") or comp.get("label") or cid)
+                        if cid:
+                            id_to_name[cid] = cname
+                    self._mk_log(f"Computadores mapeados: {len(id_to_name)}  map={dict(list(id_to_name.items())[:5])}")
                 except Exception as ex:
-                    self._mk_log(f"  {ep_comp} → erro: {ex}")
+                    self._mk_log(f"computers parse erro: {ex}  raw={rc.text[:300]}", "warn")
             self._mk_id_to_name = id_to_name  # guarda para uso no fetch
 
             # Atualiza UI na thread principal
