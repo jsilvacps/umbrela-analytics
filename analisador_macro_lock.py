@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "Umbrela Analytics"
-APP_VERSION = "8.25"
+APP_VERSION = "8.26"
 GITHUB_REPO = "jsilvacps/umbrela-analytics"   # repositório público de releases
 DEFAULT_EXCLUDE = "OFFLINE, [LOCK.OFFLINE], [LOCK.LOGIN], LOGIN, LOGOUT"
 LOGO_FILE = "logo_umbrela_analytics.png"
@@ -1949,22 +1949,37 @@ class MacroLockAnalyzerApp:
                     page += 1
                 return all_records
 
+            import datetime as _dt
+            _logged_sample = [False]
+
             def _record_to_csv_line(rec):
                 """Converte registro JSON para linha CSV com separador ;"""
+                if not _logged_sample[0]:
+                    self._mk_log(f"  sample rec: {rec}")
+                    _logged_sample[0] = True
+
                 def _esc(v):
                     s = str(v) if v is not None else ""
                     if ";" in s or '"' in s or "\n" in s:
                         s = '"' + s.replace('"', '""') + '"'
                     return s
-                # Campos que o portal exporta
-                ts   = rec.get("timestamp", rec.get("date", ""))
-                comp = rec.get("computer", rec.get("computerName", ""))
-                user = rec.get("user",     rec.get("username", ""))
-                stat = rec.get("status",   "")
-                dur  = rec.get("duration", rec.get("time", ""))
-                cat  = rec.get("category", "")
-                act  = rec.get("activity", rec.get("title", ""))
-                app  = rec.get("app",      rec.get("process", ""))
+
+                # Converte timestamp Unix → "YYYY-MM-DD HH:MM:SS"
+                ts_raw = rec.get("timestamp", rec.get("date", ""))
+                try:
+                    ts = _dt.datetime.fromtimestamp(int(ts_raw)).strftime("%Y-%m-%d %H:%M:%S")
+                except Exception:
+                    ts = str(ts_raw)
+
+                comp = rec.get("computer",  rec.get("computerName", rec.get("hostname", "")))
+                user = rec.get("user",      rec.get("username", rec.get("login", "")))
+                stat = rec.get("status",    rec.get("statusName", ""))
+                # Duração em segundos (campo inteiro)
+                dur_raw = rec.get("duration", rec.get("time", rec.get("seconds", "")))
+                dur = str(dur_raw) if dur_raw is not None else ""
+                cat  = rec.get("category",  rec.get("categoryName", rec.get("tag", "")))
+                act  = rec.get("activity",  rec.get("title", rec.get("window", rec.get("app", ""))))
+                app  = rec.get("app",       rec.get("process", rec.get("application", "")))
                 return ";".join(_esc(v) for v in [ts, comp, user, stat, dur, cat, act, app])
 
             # Recolhe computadores selecionados individualmente
