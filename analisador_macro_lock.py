@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "Umbrela Analytics"
-APP_VERSION = "8.30"
+APP_VERSION = "8.31"
 GITHUB_REPO = "jsilvacps/umbrela-analytics"   # repositório público de releases
 DEFAULT_EXCLUDE = "OFFLINE, [LOCK.OFFLINE], [LOCK.LOGIN], LOGIN, LOGOUT"
 LOGO_FILE = "logo_umbrela_analytics.png"
@@ -369,7 +369,7 @@ class MacroLockAnalyzerApp:
             pass
         return self._load_logo(max_w=target_w)
 
-    def _bind_date_mask(self, entry_widget, str_var):
+    def _bind_date_mask(self, entry_widget, str_var, next_widget=None):
         """Aplica máscara DD/MM/AAAA com / automático e cursor correto."""
         _busy  = [False]
         _prev  = [""]
@@ -405,6 +405,9 @@ class MacroLockAnalyzerApp:
                     entry_widget.icursor(len(masked))
                 else:
                     _prev[0] = raw
+                # Avança foco automaticamente quando data completa (DD/MM/AAAA = 10 chars)
+                if next_widget and len(masked) == 10 and growing:
+                    entry_widget.after(0, next_widget.focus_set)
             finally:
                 _busy[0] = False
 
@@ -1286,11 +1289,11 @@ class MacroLockAnalyzerApp:
                  font=("Segoe UI", 8)).pack(side="left")
         _e_mk_ds = ttk.Entry(date_row, textvariable=self._mk_date_start, width=14)
         _e_mk_ds.pack(side="left", padx=(4, 0))
-        self._bind_date_mask(_e_mk_ds, self._mk_date_start)
         tk.Label(date_row, text="ATÉ", bg=c["card"], fg=c["muted"],
                  font=("Segoe UI", 8)).pack(side="left", padx=(12, 0))
         _e_mk_de = ttk.Entry(date_row, textvariable=self._mk_date_end, width=14)
         _e_mk_de.pack(side="left", padx=(4, 0))
+        self._bind_date_mask(_e_mk_ds, self._mk_date_start, next_widget=_e_mk_de)
         self._bind_date_mask(_e_mk_de, self._mk_date_end)
         tk.Label(date_row, text="(DD/MM/AAAA)", bg=c["card"], fg=c["muted"],
                  font=("Segoe UI", 8)).pack(side="left", padx=(8, 0))
@@ -2979,9 +2982,9 @@ class MacroLockAnalyzerApp:
         lbl(grid, "DATA FINAL (opcional)",   4, 1, (16, 0))
         _e_rds = ttk.Entry(grid, textvariable=self.report_date_start, width=18)
         _e_rds.grid(row=5, column=0, sticky="w", pady=(0, 4))
-        self._bind_date_mask(_e_rds, self.report_date_start)
         _e_rde = ttk.Entry(grid, textvariable=self.report_date_end, width=18)
         _e_rde.grid(row=5, column=1, sticky="w", padx=(16, 0), pady=(0, 4))
+        self._bind_date_mask(_e_rds, self.report_date_start, next_widget=_e_rde)
         self._bind_date_mask(_e_rde, self.report_date_end)
         tk.Label(grid, text="DD/MM/AAAA ou AAAA-MM-DD  —  vazio = toda a base",
                  bg=c["card"], fg=c["muted"], font=("Segoe UI", 8)).grid(row=6, column=0, columnspan=2, sticky="w", pady=(0, 12))
