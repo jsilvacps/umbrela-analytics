@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "Umbrela Analytics"
-APP_VERSION = "8.17"
+APP_VERSION = "8.18"
 GITHUB_REPO = "jsilvacps/umbrela-analytics"   # repositório público de releases
 DEFAULT_EXCLUDE = "OFFLINE, [LOCK.OFFLINE], [LOCK.LOGIN], LOGIN, LOGOUT"
 LOGO_FILE = "logo_umbrela_analytics.png"
@@ -1818,78 +1818,101 @@ class MacroLockAnalyzerApp:
             self._mk_log(f"from_s={from_s}  to_s={to_s}  from_ms={from_ms}  to_ms={to_ms}")
             self._mk_log(f"Tipos: {[t for t,_ in selected_types]}  |  Grupos: {[n for _,n in selected_groups]}")
 
-            total_combos = len(selected_types) * len(selected_groups)
-            done = 0
             added_files = []
 
+            def _try_download(type_key, extra_params, label_suffix):
+                """Tenta baixar CSV do endpoint de export. Retorna (bytes, linhas) ou None."""
+                ep = f"{base}/api/front/reports/export"
+                params = {
+                    "type":   type_key,
+                    "format": "csv",
+                    "from":   from_s,
+                    "to":     to_s,
+                    "lang":   "pt",
+                    "theme":  "light",
+                }
+                params.update(extra_params)
+                param_str = " ".join(f"{k}={v}" for k, v in extra_params.items())
+                self._mk_log(f"  GET /export  {param_str}")
+                _r = self._mk_session.get(ep, params=params, timeout=120, stream=True)
+                self._mk_log(f"  HTTP {_r.status_code}  {_r.headers.get('Content-Type','?')}")
+                if _r.status_code != 200:
+                    self._mk_log(f"  ⚠ {_r.text[:200]}", "warn")
+                    return None
+                _preview = b""
+                for chunk in _r.iter_content(chunk_size=4096):
+                    _preview += chunk
+                    if len(_preview) >= 4096:
+                        break
+                _text = _preview.decode("utf-8", errors="replace")
+                _linhas = [l for l in _text.splitlines() if l.strip()]
+                self._mk_log(f"  Prévia ({len(_preview)}B, {len(_linhas)}L): {_text[:300]}")
+                if len(_linhas) > 1:
+                    return (_r, _preview, _linhas)
+                self._mk_log(f"  ⚠ Só cabeçalho.", "warn")
+                return None
+
+            total_types = len(selected_types)
+            done = 0
             for type_key, type_lbl in selected_types:
-                for group_id, group_name in selected_groups:
-                    done += 1
-                    prog = int(done / total_combos * 90)
-                    self._mk_prog_var.set(prog)
-                    label = f"[{done}/{total_combos}] {type_lbl} — {group_name}"
-                    self._mk_prog_lbl.set(label)
-                    self._mk_log(f"Baixando: {label}")
+                done += 1
+                prog = int(done / total_types * 90)
+                self._mk_prog_var.set(prog)
+                self._mk_prog_lbl.set(f"[{done}/{total_types}] {type_lbl}")
+                self._mk_log(f"Baixando: [{done}/{total_types}] {type_lbl}")
 
-                    # Tenta os dois endpoints possíveis
-                    endpoints = [
-                        f"{base}/api/front/reports/export",
-                        f"{base}/api/front/reports",
-                    ]
-                    r = None
-                    preview_bytes = b""
-                    linhas = []
-                    for ep in endpoints:
-                        params = {
-                            "type":   type_key,
-                            "format": "csv",
-                            "from":   from_s,
-                            "to":     to_s,
-                            "lang":   "pt",
-                            "theme":  "light",
-                        }
-                        if group_id:
-                            params["group"] = group_id
-                        self._mk_log(f"  GET {ep.replace(base,'')}  from_s={from_s} to_s={to_s}")
-                        _r = self._mk_session.get(ep, params=params, timeout=120, stream=True)
-                        self._mk_log(f"  HTTP {_r.status_code}  Content-Type: {_r.headers.get('Content-Type','?')}")
-                        if _r.status_code != 200:
-                            self._mk_log(f"  ⚠ {_r.text[:200]}", "warn")
-                            continue
-                        _preview = b""
-                        for chunk in _r.iter_content(chunk_size=4096):
-                            _preview += chunk
-                            if len(_preview) >= 4096:
-                                break
-                        _text = _preview.decode("utf-8", errors="replace")
-                        _linhas = [l for l in _text.splitlines() if l.strip()]
-                        self._mk_log(f"  Prévia ({len(_preview)}B, {len(_linhas)} linhas): {_text[:500]}")
-                        if len(_linhas) > 1:
-                            r, preview_bytes, linhas = _r, _preview, _linhas
+                # Recolhe todos os computerIds dos grupos selecionados (sem duplicatas)
+                computer_ids = []
+                seen = set()
+                for gid, gname in selected_groups:
+                    if gid and gid in self._mk_group_computers:
+                        for cid in self._mk_group_computers[gid]:
+                            if cid not in seen:
+                                seen.add(cid)
+                                computer_ids.append((cid, gname))
+
+                result = None
+                if computer_ids:
+                    # Tenta por computer individual primeiro
+                    for cid, cname in computer_ids:
+                        self._mk_log(f"  computer={cid} ({cname})")
+                        result = _try_download(type_key, {"computer": cid}, cid)
+                        if result:
                             break
-                        else:
-                            self._mk_log(f"  ⚠ Só cabeçalho nesse endpoint, tentando próximo...", "warn")
+                    # Fallback: tenta com group id
+                    if not result:
+                        for gid, gname in selected_groups:
+                            if not gid:
+                                continue
+                            self._mk_log(f"  group={gid} ({gname})")
+                            result = _try_download(type_key, {"group": gid}, gid)
+                            if result:
+                                break
+                # Último fallback: sem filtro
+                if not result:
+                    self._mk_log(f"  sem filtro de grupo/computer")
+                    result = _try_download(type_key, {}, "")
 
-                    if r is None or len(linhas) <= 1:
-                        self._mk_log(f"  ⚠ Nenhum endpoint retornou dados para esse período/grupo.", "warn")
-                        continue
+                if not result:
+                    self._mk_log(f"  ⚠ Nenhuma combinação retornou dados.", "warn")
+                    continue
 
-                    # Salva CSV temporário (já lemos preview_bytes acima)
-                    safe_group = group_name.replace(" ", "_")[:20]
-                    tmp = tempfile.NamedTemporaryFile(
-                        delete=False, suffix=".csv",
-                        prefix=f"mk_{type_key}_{safe_group}_",
-                    )
-                    tmp.write(preview_bytes)
-                    total_bytes = len(preview_bytes)
-                    for chunk in r.iter_content(chunk_size=1024 * 64):
-                        if chunk:
-                            tmp.write(chunk)
-                            total_bytes += len(chunk)
-                    tmp.close()
+                r, preview_bytes, linhas = result
+                # Salva CSV temporário
+                tmp = tempfile.NamedTemporaryFile(
+                    delete=False, suffix=".csv",
+                    prefix=f"mk_{type_key}_",
+                )
+                tmp.write(preview_bytes)
+                total_bytes = len(preview_bytes)
+                for chunk in r.iter_content(chunk_size=1024 * 64):
+                    if chunk:
+                        tmp.write(chunk)
+                        total_bytes += len(chunk)
+                tmp.close()
 
-                    self._mk_log(f"  ✅ {total_bytes/1024:.1f} KB → {tmp.name}", "ok")
-                    added_files.append(tmp.name)
+                self._mk_log(f"  ✅ {total_bytes/1024:.1f} KB → {tmp.name}", "ok")
+                added_files.append(tmp.name)
 
             # Adiciona todos à fila sem processar
             for f in added_files:
