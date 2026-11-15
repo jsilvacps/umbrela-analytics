@@ -1810,41 +1810,40 @@ class MacroLockAnalyzerApp:
                     self._mk_prog_lbl.set(label)
                     self._mk_log(f"Baixando: {label}")
 
-                    # Tenta com segundos primeiro (como o portal web usa), depois ms
-                    resp = None
-                    for use_ms in (False, True):
-                        f_val = from_ms if use_ms else from_s
-                        t_val = to_ms   if use_ms else to_s
-                        params = {
-                            "type":   type_key,
-                            "format": "csv",
-                            "from":   f_val,
-                            "to":     t_val,
-                            "lang":   "pt",
-                            "theme":  "light",
-                        }
-                        if group_id:
-                            params["group"] = group_id
-                        self._mk_log(f"  GET /export  {'ms' if use_ms else 's'}  params={params}")
-                        r = self._mk_session.get(
-                            f"{base}/api/front/reports/export",
-                            params=params, timeout=120, stream=True,
-                        )
-                        self._mk_log(f"  HTTP {r.status_code}  Content-Type: {r.headers.get('Content-Type','?')}")
-                        # Lê preview para ver se tem dados
-                        preview_bytes = b""
-                        for chunk in r.iter_content(chunk_size=4096):
-                            preview_bytes += chunk
-                            if len(preview_bytes) >= 4096:
-                                break
-                        self._mk_log(f"  Prévia ({len(preview_bytes)}B): {preview_bytes[:300]}")
-                        if r.status_code == 200 and len(preview_bytes) > 100:
-                            resp = (r, preview_bytes)
-                            break
-                    if resp is None:
-                        self._mk_log(f"  ⚠ Nenhuma variante retornou dados.", "warn")
+                    # Envia com segundos (como o portal web usa)
+                    params = {
+                        "type":   type_key,
+                        "format": "csv",
+                        "from":   from_s,
+                        "to":     to_s,
+                        "lang":   "pt",
+                        "theme":  "light",
+                    }
+                    if group_id:
+                        params["group"] = group_id
+                    self._mk_log(f"  GET /export  from_s={from_s} to_s={to_s}  params={params}")
+                    r = self._mk_session.get(
+                        f"{base}/api/front/reports/export",
+                        params=params, timeout=120, stream=True,
+                    )
+                    self._mk_log(f"  HTTP {r.status_code}  Content-Type: {r.headers.get('Content-Type','?')}")
+                    if r.status_code != 200:
+                        self._mk_log(f"  ⚠ HTTP {r.status_code}: {r.text[:300]}", "warn")
                         continue
-                    r, preview_bytes = resp
+                    # Lê preview completo
+                    preview_bytes = b""
+                    for chunk in r.iter_content(chunk_size=4096):
+                        preview_bytes += chunk
+                        if len(preview_bytes) >= 4096:
+                            break
+                    preview_text = preview_bytes.decode("utf-8", errors="replace")
+                    linhas = [l for l in preview_text.splitlines() if l.strip()]
+                    self._mk_log(f"  Prévia ({len(preview_bytes)}B, {len(linhas)} linhas): {preview_text[:400]}")
+
+                    # Verifica se tem dados (mais de 1 linha = header + pelo menos 1 registro)
+                    if len(linhas) <= 1:
+                        self._mk_log(f"  ⚠ Sem dados para esse período/grupo (só cabeçalho).", "warn")
+                        continue
 
                     # Salva CSV temporário (já lemos preview_bytes acima)
                     safe_group = group_name.replace(" ", "_")[:20]
