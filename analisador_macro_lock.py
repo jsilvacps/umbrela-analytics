@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "Umbrela Analytics"
-APP_VERSION = "8.24"
+APP_VERSION = "8.25"
 GITHUB_REPO = "jsilvacps/umbrela-analytics"   # repositório público de releases
 DEFAULT_EXCLUDE = "OFFLINE, [LOCK.OFFLINE], [LOCK.LOGIN], LOGIN, LOGOUT"
 LOGO_FILE = "logo_umbrela_analytics.png"
@@ -1923,8 +1923,9 @@ class MacroLockAnalyzerApp:
                     base_params["computer"] = computer
                 all_records = []
                 page = 1
-                total_pages = 1
-                while page <= total_pages:
+                total_items = None
+                actual_page_size = None
+                while True:
                     params = {**base_params, "page": page}
                     _r = self._mk_session.get(ep, params=params, timeout=60)
                     if _r.status_code != 200:
@@ -1936,11 +1937,15 @@ class MacroLockAnalyzerApp:
                         self._mk_log(f"    p{page} JSON inválido: {_r.text[:100]}", "warn")
                         break
                     records = jdata.get("data", [])
-                    total_items = jdata.get("total", 0)
-                    total_pages = max(1, -(-total_items // PAGE_SIZE))  # ceil
+                    if total_items is None:
+                        total_items = jdata.get("total", 0)
+                        actual_page_size = jdata.get("pageSize", len(records) or 25)
+                        total_pages = max(1, -(-total_items // actual_page_size))
+                        self._mk_log(f"    total={total_items}  pageSize={actual_page_size}  páginas={total_pages}")
                     all_records.extend(records)
-                    if page == 1:
-                        self._mk_log(f"    total={total_items}  páginas={total_pages}")
+                    # Para quando não há mais registros ou chegamos na última página
+                    if not records or len(all_records) >= total_items:
+                        break
                     page += 1
                 return all_records
 
