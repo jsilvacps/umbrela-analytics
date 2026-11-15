@@ -1810,39 +1810,47 @@ class MacroLockAnalyzerApp:
                     self._mk_prog_lbl.set(label)
                     self._mk_log(f"Baixando: {label}")
 
-                    # Envia com segundos (como o portal web usa)
-                    params = {
-                        "type":   type_key,
-                        "format": "csv",
-                        "from":   from_s,
-                        "to":     to_s,
-                        "lang":   "pt",
-                        "theme":  "light",
-                    }
-                    if group_id:
-                        params["group"] = group_id
-                    self._mk_log(f"  GET /export  from_s={from_s} to_s={to_s}  params={params}")
-                    r = self._mk_session.get(
+                    # Tenta os dois endpoints possíveis
+                    endpoints = [
                         f"{base}/api/front/reports/export",
-                        params=params, timeout=120, stream=True,
-                    )
-                    self._mk_log(f"  HTTP {r.status_code}  Content-Type: {r.headers.get('Content-Type','?')}")
-                    if r.status_code != 200:
-                        self._mk_log(f"  ⚠ HTTP {r.status_code}: {r.text[:300]}", "warn")
-                        continue
-                    # Lê preview completo
+                        f"{base}/api/front/reports",
+                    ]
+                    r = None
                     preview_bytes = b""
-                    for chunk in r.iter_content(chunk_size=4096):
-                        preview_bytes += chunk
-                        if len(preview_bytes) >= 4096:
+                    linhas = []
+                    for ep in endpoints:
+                        params = {
+                            "type":   type_key,
+                            "format": "csv",
+                            "from":   from_s,
+                            "to":     to_s,
+                            "lang":   "pt",
+                            "theme":  "light",
+                        }
+                        if group_id:
+                            params["group"] = group_id
+                        self._mk_log(f"  GET {ep.replace(base,'')}  from_s={from_s} to_s={to_s}")
+                        _r = self._mk_session.get(ep, params=params, timeout=120, stream=True)
+                        self._mk_log(f"  HTTP {_r.status_code}  Content-Type: {_r.headers.get('Content-Type','?')}")
+                        if _r.status_code != 200:
+                            self._mk_log(f"  ⚠ {_r.text[:200]}", "warn")
+                            continue
+                        _preview = b""
+                        for chunk in _r.iter_content(chunk_size=4096):
+                            _preview += chunk
+                            if len(_preview) >= 4096:
+                                break
+                        _text = _preview.decode("utf-8", errors="replace")
+                        _linhas = [l for l in _text.splitlines() if l.strip()]
+                        self._mk_log(f"  Prévia ({len(_preview)}B, {len(_linhas)} linhas): {_text[:500]}")
+                        if len(_linhas) > 1:
+                            r, preview_bytes, linhas = _r, _preview, _linhas
                             break
-                    preview_text = preview_bytes.decode("utf-8", errors="replace")
-                    linhas = [l for l in preview_text.splitlines() if l.strip()]
-                    self._mk_log(f"  Prévia ({len(preview_bytes)}B, {len(linhas)} linhas): {preview_text[:400]}")
+                        else:
+                            self._mk_log(f"  ⚠ Só cabeçalho nesse endpoint, tentando próximo...", "warn")
 
-                    # Verifica se tem dados (mais de 1 linha = header + pelo menos 1 registro)
-                    if len(linhas) <= 1:
-                        self._mk_log(f"  ⚠ Sem dados para esse período/grupo (só cabeçalho).", "warn")
+                    if r is None or len(linhas) <= 1:
+                        self._mk_log(f"  ⚠ Nenhum endpoint retornou dados para esse período/grupo.", "warn")
                         continue
 
                     # Salva CSV temporário (já lemos preview_bytes acima)
