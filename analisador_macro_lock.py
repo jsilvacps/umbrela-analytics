@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "Umbrela Analytics"
-APP_VERSION = "8.31"
+APP_VERSION = "8.32"
 GITHUB_REPO = "jsilvacps/umbrela-analytics"   # repositório público de releases
 DEFAULT_EXCLUDE = "OFFLINE, [LOCK.OFFLINE], [LOCK.LOGIN], LOGIN, LOGOUT"
 LOGO_FILE = "logo_umbrela_analytics.png"
@@ -205,6 +205,10 @@ class MacroLockAnalyzerApp:
         self._mk_report_type = tk.StringVar(value="sessions")
         self._mk_busy    = False
         self.output_path = tk.StringVar(value=r"C:\Users\TI\Desktop\indicadores")
+        # Controle de Horário
+        self._mk_horario_monitor_ativo = False
+        self._mk_horario_after_id = None
+        self._mk_horario_rows: dict[str, dict] = {}  # cname → dados da linha na tabela
         self.exclude_terms = tk.StringVar(value=DEFAULT_EXCLUDE)
         self.status_text = tk.StringVar(value="Selecione o CSV exportado do Macro Lock.")
         self.progress_value = tk.DoubleVar(value=0)
@@ -957,11 +961,12 @@ class MacroLockAnalyzerApp:
         self._mk_container = tk.Frame(parent, bg=c["bg"])
         self._mk_container.pack(fill="both", expand=True)
 
-        # Cria os quatro frames
+        # Cria os frames
         self._mk_frame_login    = self._build_mk_login_frame(self._mk_container)
         self._mk_frame_choice   = self._build_mk_choice_frame(self._mk_container)
         self._mk_frame_reports  = self._build_mk_reports_frame(self._mk_container)
         self._mk_frame_classify = self._build_mk_classify_frame(self._mk_container)
+        self._mk_frame_horario  = self._build_mk_horario_frame(self._mk_container)
 
         # Começa na tela de login
         self._mk_show_login_frame()
@@ -969,7 +974,8 @@ class MacroLockAnalyzerApp:
     # ── Navegação entre frames ────────────────────────────────────────────
     def _mk_hide_all(self):
         for f in (self._mk_frame_login, self._mk_frame_choice,
-                  self._mk_frame_reports, self._mk_frame_classify):
+                  self._mk_frame_reports, self._mk_frame_classify,
+                  self._mk_frame_horario):
             f.pack_forget()
 
     def _mk_show_login_frame(self):
@@ -992,6 +998,10 @@ class MacroLockAnalyzerApp:
     def _mk_show_classify_frame(self):
         self._mk_hide_all()
         self._mk_frame_classify.pack(fill="both", expand=True)
+
+    def _mk_show_horario_frame(self):
+        self._mk_hide_all()
+        self._mk_frame_horario.pack(fill="both", expand=True)
 
     def _mk_show_choice_modal(self):
         """Mantido para compatibilidade — redireciona para o frame integrado."""
@@ -1104,6 +1114,13 @@ class MacroLockAnalyzerApp:
                      icon="✦", title="Classificação",
                      subtitle="Classifique atividades não\natribuídas em massa.",
                      action=self._mk_show_classify_frame
+                     ).pack(side="left", padx=(0, 20))
+
+        _choice_card(cards,
+                     accent="#F59E0B",
+                     icon="⏰", title="Controle de\nHorário",
+                     subtitle="Monitor em tempo real.\nAvisos fora do expediente.",
+                     action=self._mk_show_horario_frame
                      ).pack(side="left")
 
         # Botão sair
@@ -1547,6 +1564,351 @@ class MacroLockAnalyzerApp:
                  font=("Segoe UI", 8)).pack(anchor="w")
 
         return frame
+
+    # ── Frame Controle de Horário ─────────────────────────────────────────
+    def _build_mk_horario_frame(self, parent):
+        c = self.COLORS
+        AMBER = "#F59E0B"
+        frame = tk.Frame(parent, bg=c["bg"])
+
+        # Scroll
+        canvas = tk.Canvas(frame, bg=c["bg"], highlightthickness=0)
+        sb = ttk.Scrollbar(frame, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        inner = tk.Frame(canvas, bg=c["bg"])
+        win_id = canvas.create_window((0, 0), window=inner, anchor="nw")
+
+        def _on_resize(e):
+            canvas.itemconfig(win_id, width=e.width)
+        def _on_frame(e):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+        canvas.bind("<Configure>", _on_resize)
+        inner.bind("<Configure>", _on_frame)
+
+        def _scroll(e):
+            canvas.yview_scroll(int(-1 * (e.delta / 120)), "units")
+        canvas.bind_all("<MouseWheel>", _scroll)
+
+        pad = tk.Frame(inner, bg=c["bg"], padx=32, pady=24)
+        pad.pack(fill="both", expand=True)
+
+        # Navegação
+        nav = tk.Frame(pad, bg=c["bg"])
+        nav.pack(fill="x", pady=(0, 16))
+        ttk.Button(nav, text="⬅  Menu", style="Ghost.TButton",
+                   command=self._mk_show_choice_modal).pack(side="left")
+        ttk.Button(nav, text="Desconectar", style="Danger.TButton",
+                   command=self._mk_logout).pack(side="right")
+
+        # Título
+        tk.Label(pad, text="⏰  CONTROLE DE HORÁRIO", bg=c["bg"], fg=AMBER,
+                 font=("Segoe UI", 13, "bold")).pack(anchor="w", pady=(0, 2))
+        tk.Label(pad, text="Monitor em tempo real · Avisos automáticos fora do expediente",
+                 bg=c["bg"], fg=c["muted"], font=("Segoe UI", 9)).pack(anchor="w", pady=(0, 16))
+
+        # ── Card: Configurar expediente ──────────────────────────────────
+        _, card_cfg = self._card(pad, accent=True, color=AMBER)
+        _.pack(fill="x", pady=(0, 12))
+
+        tk.Label(card_cfg, text="EXPEDIENTE", bg=c["card"], fg=AMBER,
+                 font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(0, 10))
+
+        dias_row = tk.Frame(card_cfg, bg=c["card"])
+        dias_row.pack(anchor="w", pady=(0, 8))
+        tk.Label(dias_row, text="Dias:", bg=c["card"], fg=c["muted"],
+                 font=("Segoe UI", 9)).pack(side="left", padx=(0, 8))
+
+        self._mk_hor_dias = {}
+        dias = [("Seg", "seg"), ("Ter", "ter"), ("Qua", "qua"),
+                ("Qui", "qui"), ("Sex", "sex"), ("Sáb", "sab"), ("Dom", "dom")]
+        for label, key in dias:
+            var = tk.BooleanVar(value=(key not in ("sab", "dom")))
+            self._mk_hor_dias[key] = var
+            ttk.Checkbutton(dias_row, text=label, variable=var).pack(side="left", padx=2)
+
+        hora_row = tk.Frame(card_cfg, bg=c["card"])
+        hora_row.pack(anchor="w", pady=(0, 8))
+        tk.Label(hora_row, text="Horário:", bg=c["card"], fg=c["muted"],
+                 font=("Segoe UI", 9)).pack(side="left", padx=(0, 8))
+        self._mk_hor_inicio = tk.StringVar(value="08:00")
+        self._mk_hor_fim    = tk.StringVar(value="18:00")
+        ttk.Entry(hora_row, textvariable=self._mk_hor_inicio, width=8).pack(side="left")
+        tk.Label(hora_row, text="até", bg=c["card"], fg=c["muted"],
+                 font=("Segoe UI", 9)).pack(side="left", padx=6)
+        ttk.Entry(hora_row, textvariable=self._mk_hor_fim, width=8).pack(side="left")
+
+        acao_row = tk.Frame(card_cfg, bg=c["card"])
+        acao_row.pack(anchor="w", pady=(0, 8))
+        tk.Label(acao_row, text="Ação:", bg=c["card"], fg=c["muted"],
+                 font=("Segoe UI", 9)).pack(side="left", padx=(0, 8))
+        self._mk_hor_acao = tk.StringVar(value="aviso")
+        ttk.Radiobutton(acao_row, text="📢 Enviar aviso", variable=self._mk_hor_acao,
+                        value="aviso").pack(side="left", padx=4)
+        ttk.Radiobutton(acao_row, text="📝 Só registrar", variable=self._mk_hor_acao,
+                        value="log").pack(side="left", padx=4)
+
+        msg_row = tk.Frame(card_cfg, bg=c["card"])
+        msg_row.pack(fill="x", pady=(0, 8))
+        tk.Label(msg_row, text="Mensagem:", bg=c["card"], fg=c["muted"],
+                 font=("Segoe UI", 9)).pack(anchor="w")
+        self._mk_hor_msg = tk.StringVar(
+            value="Atenção: seu computador está ativo fora do horário de trabalho.")
+        ttk.Entry(msg_row, textvariable=self._mk_hor_msg, width=60).pack(fill="x", pady=(4, 0))
+
+        intervalo_row = tk.Frame(card_cfg, bg=c["card"])
+        intervalo_row.pack(anchor="w")
+        tk.Label(intervalo_row, text="Verificar a cada:", bg=c["card"], fg=c["muted"],
+                 font=("Segoe UI", 9)).pack(side="left", padx=(0, 8))
+        self._mk_hor_intervalo = tk.StringVar(value="5")
+        ttk.Entry(intervalo_row, textvariable=self._mk_hor_intervalo, width=5).pack(side="left")
+        tk.Label(intervalo_row, text="minutos", bg=c["card"], fg=c["muted"],
+                 font=("Segoe UI", 9)).pack(side="left", padx=(4, 0))
+
+        # ── Card: Monitor em tempo real ──────────────────────────────────
+        _, card_mon = self._card(pad, accent=True, color=c["teal"])
+        _.pack(fill="x", pady=(0, 12))
+
+        mon_hdr = tk.Frame(card_mon, bg=c["card"])
+        mon_hdr.pack(fill="x", pady=(0, 10))
+        tk.Label(mon_hdr, text="MONITOR EM TEMPO REAL", bg=c["card"], fg=c["teal"],
+                 font=("Segoe UI", 9, "bold")).pack(side="left")
+
+        self._mk_hor_status_lbl = tk.Label(mon_hdr, text="● Parado",
+                                            bg=c["card"], fg=c["muted"],
+                                            font=("Segoe UI", 9))
+        self._mk_hor_status_lbl.pack(side="right")
+
+        btn_row = tk.Frame(card_mon, bg=c["card"])
+        btn_row.pack(anchor="w", pady=(0, 10))
+        self._mk_hor_btn_iniciar = ttk.Button(btn_row, text="▶ Iniciar monitor",
+                                               style="Accent.TButton",
+                                               command=self._mk_hor_toggle)
+        self._mk_hor_btn_iniciar.pack(side="left", padx=(0, 8))
+        ttk.Button(btn_row, text="🔄 Verificar agora",
+                   style="Ghost.TButton",
+                   command=self._mk_hor_verificar_agora).pack(side="left")
+
+        # Tabela de estações
+        cols_def = [("Usuário (Computador)", 220), ("Status", 90),
+                    ("Online", 70), ("Situação", 110), ("Ação", 100)]
+        tbl_frame = tk.Frame(card_mon, bg=c["card"])
+        tbl_frame.pack(fill="x")
+
+        self._mk_hor_tree = ttk.Treeview(tbl_frame,
+                                          columns=[d[0] for d in cols_def],
+                                          show="headings", height=12)
+        for col, width in cols_def:
+            self._mk_hor_tree.heading(col, text=col)
+            self._mk_hor_tree.column(col, width=width, minwidth=60)
+
+        vsb = ttk.Scrollbar(tbl_frame, orient="vertical",
+                             command=self._mk_hor_tree.yview)
+        self._mk_hor_tree.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        self._mk_hor_tree.pack(fill="x")
+
+        # Tags de cor para a tabela
+        self._mk_hor_tree.tag_configure("fora",   foreground="#F87171")
+        self._mk_hor_tree.tag_configure("dentro", foreground="#34D399")
+        self._mk_hor_tree.tag_configure("off",    foreground=c["muted"])
+
+        # Duplo clique → enviar mensagem manual
+        self._mk_hor_tree.bind("<Double-1>", self._mk_hor_enviar_manual)
+
+        # ── Card: Log de ocorrências ─────────────────────────────────────
+        _, card_log = self._card(pad, accent=False)
+        _.pack(fill="x", pady=(0, 12))
+
+        log_hdr = tk.Frame(card_log, bg=c["card"])
+        log_hdr.pack(fill="x", pady=(0, 6))
+        tk.Label(log_hdr, text="LOG DE OCORRÊNCIAS", bg=c["card"], fg=c["muted"],
+                 font=("Segoe UI", 9, "bold")).pack(side="left")
+        ttk.Button(log_hdr, text="Limpar", style="Ghost.TButton",
+                   command=lambda: self._mk_hor_log_txt.configure(state="normal") or
+                   self._mk_hor_log_txt.delete("1.0", "end") or
+                   self._mk_hor_log_txt.configure(state="disabled")
+                   ).pack(side="right")
+
+        self._mk_hor_log_txt = tk.Text(card_log, height=8, bg=c["card2"],
+                                        fg=c["text"], font=("Consolas", 8),
+                                        relief="flat", state="disabled",
+                                        wrap="word")
+        self._mk_hor_log_txt.pack(fill="x")
+
+        return frame
+
+    def _mk_hor_log(self, msg: str):
+        import datetime as _dt
+        ts = _dt.datetime.now().strftime("%H:%M:%S")
+        txt = self._mk_hor_log_txt
+        txt.configure(state="normal")
+        txt.insert("end", f"[{ts}] {msg}\n")
+        txt.see("end")
+        txt.configure(state="disabled")
+
+    def _mk_hor_toggle(self):
+        if self._mk_horario_monitor_ativo:
+            self._mk_horario_monitor_ativo = False
+            if self._mk_horario_after_id:
+                try:
+                    self.root.after_cancel(self._mk_horario_after_id)
+                except Exception:
+                    pass
+                self._mk_horario_after_id = None
+            self._mk_hor_btn_iniciar.configure(text="▶ Iniciar monitor")
+            self._mk_hor_status_lbl.configure(text="● Parado", fg=self.COLORS["muted"])
+            self._mk_hor_log("Monitor parado.")
+        else:
+            self._mk_horario_monitor_ativo = True
+            self._mk_hor_btn_iniciar.configure(text="⏹ Parar monitor")
+            self._mk_hor_status_lbl.configure(text="● Ativo", fg="#34D399")
+            self._mk_hor_log("Monitor iniciado.")
+            self._mk_hor_ciclo()
+
+    def _mk_hor_verificar_agora(self):
+        import threading
+        threading.Thread(target=self._mk_hor_do_check, daemon=True).start()
+
+    def _mk_hor_ciclo(self):
+        if not self._mk_horario_monitor_ativo:
+            return
+        import threading
+        threading.Thread(target=self._mk_hor_do_check, daemon=True).start()
+        try:
+            mins = max(1, int(self._mk_hor_intervalo.get()))
+        except ValueError:
+            mins = 5
+        self._mk_horario_after_id = self.root.after(mins * 60_000, self._mk_hor_ciclo)
+
+    def _mk_hor_do_check(self):
+        import datetime as _dt
+        if not self._mk_logged or not self._mk_session:
+            self.root.after(0, lambda: self._mk_hor_log("⚠ Não conectado ao Makrolock."))
+            return
+        try:
+            rc = self._mk_session.get(f"{self._mk_base_url}/api/front/computers", timeout=15)
+            if rc.status_code != 200:
+                self.root.after(0, lambda: self._mk_hor_log(f"⚠ Erro ao buscar computadores: HTTP {rc.status_code}"))
+                return
+            cdata = rc.json()
+            clist = cdata if isinstance(cdata, list) else (
+                cdata.get("computers") or cdata.get("data") or [])
+        except Exception as ex:
+            self.root.after(0, lambda: self._mk_hor_log(f"⚠ Erro de rede: {ex}"))
+            return
+
+        now = _dt.datetime.now()
+        dow_map = {0: "seg", 1: "ter", 2: "qua", 3: "qui", 4: "sex", 5: "sab", 6: "dom"}
+        dia_key = dow_map[now.weekday()]
+        dia_ok  = self._mk_hor_dias.get(dia_key, tk.BooleanVar(value=True)).get()
+
+        try:
+            h_ini = _dt.time.fromisoformat(self._mk_hor_inicio.get())
+            h_fim = _dt.time.fromisoformat(self._mk_hor_fim.get())
+        except ValueError:
+            h_ini, h_fim = _dt.time(8, 0), _dt.time(18, 0)
+
+        hora_atual = now.time().replace(second=0, microsecond=0)
+        dentro_horario = dia_ok and h_ini <= hora_atual <= h_fim
+
+        rows_data = []
+        infratores = []
+        for comp in clist:
+            cname   = comp.get("name") or comp.get("alias") or str(comp.get("id", "?"))
+            uname   = (comp.get("currentUser") or comp.get("user") or
+                       comp.get("username") or "")
+            online  = bool(comp.get("online", False))
+            display = f"{uname} ({cname})" if uname else cname
+            if not online:
+                situacao = "Offline"
+                tag = "off"
+            elif dentro_horario:
+                situacao = "✅ No expediente"
+                tag = "dentro"
+            else:
+                situacao = "⚠ Fora do expediente"
+                tag = "fora"
+                if online:
+                    infratores.append((cname, uname, display))
+
+            rows_data.append((display, "Online" if online else "Offline",
+                              "Sim" if online else "Não", situacao, tag, cname))
+
+        def _update_ui():
+            tree = self._mk_hor_tree
+            tree.delete(*tree.get_children())
+            for display, status, is_online, situacao, tag, cname in rows_data:
+                tree.insert("", "end",
+                            values=(display, status, is_online, situacao, "✉ Enviar aviso"),
+                            tags=(tag,), iid=cname)
+            if infratores:
+                self._mk_hor_log(
+                    f"{'⚠' if not dentro_horario else '✅'} "
+                    f"{len(infratores)} estação(ões) ativa(s) fora do expediente: "
+                    + ", ".join(d for _, _, d in infratores))
+                if self._mk_hor_acao.get() == "aviso":
+                    for cname, uname, display in infratores:
+                        self._mk_hor_enviar_aviso(cname, uname)
+            else:
+                self._mk_hor_log(
+                    f"✅ {'Dentro do expediente' if dentro_horario else 'Fora do expediente'} "
+                    f"— nenhuma estação irregular.")
+
+        self.root.after(0, _update_ui)
+
+    def _mk_hor_enviar_aviso(self, cname: str, uname: str = ""):
+        """Envia mensagem de aviso para uma estação via API Makrolock."""
+        msg = self._mk_hor_msg.get().strip()
+        if not msg:
+            return
+        self._mk_hor_log(f"📢 Enviando aviso para {cname}...")
+        import threading
+        threading.Thread(target=self._mk_hor_do_enviar,
+                         args=(cname, msg), daemon=True).start()
+
+    def _mk_hor_do_enviar(self, cname: str, msg: str):
+        # TODO: substituir pela URL/método real capturado via F12 no portal Makrolock
+        # Exemplo provável: POST /api/front/computers/{id}/message  body: {"message": msg}
+        # ou: POST /api/front/message  body: {"computer": cname, "message": msg}
+        try:
+            # Tenta descobrir o ID numérico pelo nome
+            cid = None
+            for numeric_id, name in self._mk_id_to_name.items():
+                if name == cname:
+                    cid = numeric_id
+                    break
+
+            # ── Endpoint a confirmar ──────────────────────────────────────
+            # Descomente e ajuste após capturar via F12:
+            # url = f"{self._mk_base_url}/api/front/computers/{cid}/message"
+            # payload = {"message": msg, "type": "alert"}
+            # rc = self._mk_session.post(url, json=payload, timeout=10)
+            # ok = rc.status_code in (200, 201, 204)
+            # ──────────────────────────────────────────────────────────────
+
+            # Por enquanto, simula o envio e loga que precisa do endpoint
+            ok = False
+            self.root.after(0, lambda: self._mk_hor_log(
+                f"⏳ [{cname}] Endpoint de mensagem pendente — capture via F12 no portal."))
+        except Exception as ex:
+            self.root.after(0, lambda: self._mk_hor_log(f"❌ Erro ao enviar para {cname}: {ex}"))
+
+    def _mk_hor_enviar_manual(self, event):
+        """Duplo clique na tabela → envia mensagem manual para aquela estação."""
+        tree = self._mk_hor_tree
+        sel = tree.selection()
+        if not sel:
+            return
+        cname = sel[0]  # iid é o cname
+        msg = self._mk_hor_msg.get().strip()
+        if not msg:
+            return
+        self._mk_hor_log(f"📢 Envio manual para {cname}...")
+        import threading
+        threading.Thread(target=self._mk_hor_do_enviar,
+                         args=(cname, msg), daemon=True).start()
 
     # ── Métodos de integração Makrolock ───────────────────────────────────
     def _mk_load_config(self) -> dict:
