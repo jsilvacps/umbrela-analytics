@@ -3684,7 +3684,10 @@ class MacroLockAnalyzerApp:
         threading.Thread(target=self.process, daemon=True).start()
 
     def start_report(self):
-        threading.Thread(target=self.generate_report, daemon=True).start()
+        # Lê vars Tkinter na thread principal antes de iniciar a thread de background
+        _add_dash = bool(getattr(self, "report_dashboard", None) and self.report_dashboard.get())
+        _fmt = self.report_format.get()
+        threading.Thread(target=self.generate_report, args=(_add_dash, _fmt), daemon=True).start()
 
     def _select_import_file(self):
         path = filedialog.askopenfilename(
@@ -4301,16 +4304,13 @@ class MacroLockAnalyzerApp:
             params.append(date_end + " 00:00:00")
         return where, params
 
-    def generate_report(self):
+    def generate_report(self, _add_dash: bool = False, _fmt: str = "xlsx"):
         # Busca banco mais recente
         base = Path(self.output_path.get())
         db_candidates = sorted(base.rglob("base_macro_lock.duckdb"), key=lambda p: p.stat().st_mtime, reverse=True)
         output_dir = db_candidates[0].parent if db_candidates else self._dated_output_dir()
         reports_dir = output_dir / "relatorios"
         reports_dir.mkdir(parents=True, exist_ok=True)
-        # Captura flags da UI antes de entrar em qualquer lógica de thread
-        _add_dash = bool(getattr(self, "report_dashboard", None) and self.report_dashboard.get())
-        _fmt = self.report_format.get()
         try:
             start = self._validate_time(self.night_start.get(), "Horário inicial")
             end = self._validate_time(self.night_end.get(), "Horário final")
