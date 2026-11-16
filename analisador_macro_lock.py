@@ -4308,6 +4308,9 @@ class MacroLockAnalyzerApp:
         output_dir = db_candidates[0].parent if db_candidates else self._dated_output_dir()
         reports_dir = output_dir / "relatorios"
         reports_dir.mkdir(parents=True, exist_ok=True)
+        # Captura flags da UI antes de entrar em qualquer lógica de thread
+        _add_dash = bool(getattr(self, "report_dashboard", None) and self.report_dashboard.get())
+        _fmt = self.report_format.get()
         try:
             start = self._validate_time(self.night_start.get(), "Horário inicial")
             end = self._validate_time(self.night_end.get(), "Horário final")
@@ -4323,7 +4326,7 @@ class MacroLockAnalyzerApp:
             base_name = safe_name(report_type + "_" + stamp)
 
             if report_type in ("ociosidade_diario", "ociosidade_mensal"):
-                out_path = reports_dir / f"{base_name}.{'csv' if self.report_format.get() == 'csv' else 'xlsx'}"
+                out_path = reports_dir / f"{base_name}.{'csv' if _fmt == 'csv' else 'xlsx'}"
                 self._generate_ociosidade_report(con, report_type, where, params, out_path, report_name)
                 self.set_status(f"Relatório de ociosidade gerado: {out_path}", 100)
                 messagebox.showinfo("Relatório gerado", f"Relatório gerado com sucesso.\n\n{out_path}")
@@ -4352,12 +4355,12 @@ class MacroLockAnalyzerApp:
             total = con.execute(f"SELECT COUNT(*) FROM ({query}) q", params).fetchone()[0]
             self.set_status(f"Registros encontrados: {total:,}".replace(",", "."), 45)
 
-            if self.report_format.get() == "csv":
+            if _fmt == "csv":
                 out_path = reports_dir / f"{base_name}.csv"
                 con.execute(f"COPY ({query}) TO '{sql_path(out_path)}' (HEADER, DELIMITER ';')", params)
             else:
                 out_path = reports_dir / f"{base_name}.xlsx"
-                self._export_query_to_xlsx(con, query, params, columns, out_path, report_name, total)
+                self._export_query_to_xlsx(con, query, params, columns, out_path, report_name, total, add_dashboard=_add_dash)
 
             self.set_status(f"Relatório gerado: {out_path}", 100)
             messagebox.showinfo("Relatório gerado", f"Relatório gerado com sucesso.\n\n{out_path}")
@@ -4778,7 +4781,7 @@ class MacroLockAnalyzerApp:
         self.write_log(f"Ociosidade: {total} linhas  |  Ranking: {n} usuários  |  Arquivo: {out_path.name}")
         workbook.close()
 
-    def _export_query_to_xlsx(self, con, query: str, params: list, columns: list, out_path: Path, report_name: str, total_rows: int, color_weekend: bool = False):
+    def _export_query_to_xlsx(self, con, query: str, params: list, columns: list, out_path: Path, report_name: str, total_rows: int, color_weekend: bool = False, add_dashboard: bool = False):
         try:
             import xlsxwriter
         except Exception:
@@ -4847,7 +4850,7 @@ class MacroLockAnalyzerApp:
             pct = 55 + ((part + 1) / parts) * 40
             self.progress_value.set(pct)
         workbook.close()
-        if getattr(self, "report_dashboard", None) and self.report_dashboard.get() and self.report_format.get() == "xlsx":
+        if add_dashboard:
             try:
                 self.write_log("📊 Gerando Dashboard...")
                 self._add_dashboard_to_xlsx(out_path)
