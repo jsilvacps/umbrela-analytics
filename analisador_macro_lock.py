@@ -205,6 +205,7 @@ class MacroLockAnalyzerApp:
         self._mk_report_type = tk.StringVar(value="sessions")
         self._mk_busy    = False
         self.output_path = tk.StringVar(value=r"C:\Users\TI\Desktop\indicadores")
+        self.output_filename = tk.StringVar(value="")
         # Controle de Horário
         self._mk_horario_monitor_ativo = False
         self._mk_horario_after_id = None
@@ -213,8 +214,8 @@ class MacroLockAnalyzerApp:
         self.status_text = tk.StringVar(value="Selecione o CSV exportado do Macro Lock.")
         self.progress_value = tk.DoubleVar(value=0)
 
-        self.night_start = tk.StringVar(value="18:00:00")
-        self.night_end = tk.StringVar(value="07:00:00")
+        self.night_start = tk.StringVar(value="18:00")
+        self.night_end = tk.StringVar(value="07:00")
         self.report_type = tk.StringVar(value="fora_horario")
         self.report_format    = tk.StringVar(value="xlsx")
         self.report_dashboard = tk.BooleanVar(value=True)
@@ -373,6 +374,30 @@ class MacroLockAnalyzerApp:
         except Exception:
             pass
         return self._load_logo(max_w=target_w)
+
+    def _bind_time_mask(self, entry_widget, str_var, next_widget=None):
+        """Aplica máscara HH:MM com : automático."""
+        _busy = [False]; _prev = [""]
+        def _on_write(*_):
+            if _busy[0]: return
+            _busy[0] = True
+            try:
+                raw = str_var.get(); growing = len(raw) > len(_prev[0])
+                digits = "".join(c for c in raw if c.isdigit())[:4]
+                if len(digits) <= 2:
+                    masked = digits + (":" if len(digits) == 2 and growing else "")
+                else:
+                    masked = digits[:2] + ":" + digits[2:4]
+                if masked != raw:
+                    _prev[0] = masked; str_var.set(masked)
+                    entry_widget.icursor(len(masked))
+                else:
+                    _prev[0] = raw
+                if next_widget and len(masked) == 5 and growing:
+                    entry_widget.after(0, next_widget.focus_set)
+            finally:
+                _busy[0] = False
+        str_var.trace_add("write", _on_write)
 
     def _bind_date_mask(self, entry_widget, str_var, next_widget=None):
         """Aplica máscara DD/MM/AAAA com / automático e cursor correto."""
@@ -2878,6 +2903,9 @@ class MacroLockAnalyzerApp:
         ttk.Entry(row1, textvariable=self.output_path).grid(row=0, column=0, sticky="ew")
         ttk.Button(row1, text="Escolher", command=self.select_output).grid(row=0, column=1, padx=(8, 0))
 
+        self._section_label(card, "NOME DO ARQUIVO DE SAÍDA  (deixe vazio para gerar automático)")
+        ttk.Entry(card, textvariable=self.output_filename).pack(fill="x", pady=(0, 4))
+
         self._section_label(card, "TERMOS/EVENTOS PARA EXCLUIR  (separados por vírgula)")
         ttk.Entry(card, textvariable=self.exclude_terms).pack(fill="x", pady=(0, 4))
 
@@ -2910,7 +2938,10 @@ class MacroLockAnalyzerApp:
         imp_row.pack(fill="x")
         imp_row.columnconfigure(0, weight=1)
         self._import_path = tk.StringVar()
-        ttk.Entry(imp_row, textvariable=self._import_path).grid(row=0, column=0, sticky="ew")
+        e_imp = ttk.Entry(imp_row, textvariable=self._import_path)
+        e_imp.grid(row=0, column=0, sticky="ew")
+        # Garante que o Entry mostre o final do caminho (texto mais relevante)
+        self._import_path.trace_add("write", lambda *_: e_imp.xview_moveto(1.0))
         ttk.Button(imp_row, text="Selecionar", command=self._select_import_file).grid(row=0, column=1, padx=(8, 0))
 
         imp_action = ttk.Frame(parent)
@@ -3333,8 +3364,12 @@ class MacroLockAnalyzerApp:
 
         lbl(grid, "HORÁRIO INICIAL",  0, 0)
         lbl(grid, "HORÁRIO FINAL",    0, 1, (16, 0))
-        ttk.Entry(grid, textvariable=self.night_start, width=14).grid(row=1, column=0, sticky="w", pady=(0, 10))
-        ttk.Entry(grid, textvariable=self.night_end,   width=14).grid(row=1, column=1, sticky="w", padx=(16, 0), pady=(0, 10))
+        _e_ns = ttk.Entry(grid, textvariable=self.night_start, width=10)
+        _e_ns.grid(row=1, column=0, sticky="w", pady=(0, 10))
+        _e_ne = ttk.Entry(grid, textvariable=self.night_end, width=10)
+        _e_ne.grid(row=1, column=1, sticky="w", padx=(16, 0), pady=(0, 10))
+        self._bind_time_mask(_e_ns, self.night_start, next_widget=_e_ne)
+        self._bind_time_mask(_e_ne, self.night_end)
 
         lbl(grid, "USUÁRIO (opcional)",      2, 0)
         lbl(grid, "EQUIPAMENTO (opcional)",  2, 1, (16, 0))
@@ -3687,7 +3722,8 @@ class MacroLockAnalyzerApp:
         # Lê vars Tkinter na thread principal antes de iniciar a thread de background
         _add_dash = bool(getattr(self, "report_dashboard", None) and self.report_dashboard.get())
         _fmt = self.report_format.get()
-        threading.Thread(target=self.generate_report, args=(_add_dash, _fmt), daemon=True).start()
+        _fname = self.output_filename.get().strip()
+        threading.Thread(target=self.generate_report, args=(_add_dash, _fmt, _fname), daemon=True).start()
 
     def _select_import_file(self):
         path = filedialog.askopenfilename(
@@ -4304,7 +4340,7 @@ class MacroLockAnalyzerApp:
             params.append(date_end + " 00:00:00")
         return where, params
 
-    def generate_report(self, _add_dash: bool = False, _fmt: str = "xlsx"):
+    def generate_report(self, _add_dash: bool = False, _fmt: str = "xlsx", _fname: str = ""):
         # Busca banco mais recente
         base = Path(self.output_path.get())
         db_candidates = sorted(base.rglob("base_macro_lock.duckdb"), key=lambda p: p.stat().st_mtime, reverse=True)
@@ -4323,7 +4359,7 @@ class MacroLockAnalyzerApp:
 
             self.set_status(f"Gerando relatório: {report_name}...", 20)
             stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            base_name = safe_name(report_type + "_" + stamp)
+            base_name = safe_name(_fname) if _fname else safe_name(report_type + "_" + stamp)
 
             if report_type in ("ociosidade_diario", "ociosidade_mensal"):
                 out_path = reports_dir / f"{base_name}.{'csv' if _fmt == 'csv' else 'xlsx'}"
