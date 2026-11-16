@@ -4896,6 +4896,14 @@ class MacroLockAnalyzerApp:
         if not machines:
             raise ValueError("Nenhuma máquina encontrada no relatório.")
 
+        # Mapeia máquina → label "usuario (MAQUINA)"
+        def _machine_label(m):
+            u = rdf[rdf["Equipamento"] == m]["Usuario"].dropna()
+            user = u.mode()[0] if not u.empty else ""
+            return f"{user} ({m})" if user else m
+        machine_labels = {m: _machine_label(m) for m in machines}
+        machines_display = [machine_labels[m] for m in machines]
+
         def _top_apps(mdf):
             t = (mdf[mdf["Aplicativo"].notna() & (mdf["Aplicativo"] != "")]
                  .groupby("Aplicativo")
@@ -4940,7 +4948,7 @@ class MacroLockAnalyzerApp:
         wsd.append(["Maquina","Rank","Aplicativo","Contagem_App","Horas_App",
                     "Site_Janela","Contagem_Site","Dia","Contagem_Dia"])
         for m in machines:
-            da = mdata[m]
+            da = mdata[m]; lbl = machine_labels[m]
             apps=da["apps"]; sites=da["sites"]; days=da["days"]
             for i in range(BLOCK):
                 an = apps.iloc[i]["Aplicativo"] if i<len(apps) else ""
@@ -4950,7 +4958,7 @@ class MacroLockAnalyzerApp:
                 sc = int(sites.iloc[i]["Contagem"]) if i<len(sites) else ""
                 dn = days.iloc[i]["Dia"]       if i<len(days) else ""
                 dc = int(days.iloc[i]["Contagem"]) if i<len(days) else ""
-                wsd.append([m, i+1, an, ac, ah, sn_, sc, dn, dc])
+                wsd.append([lbl, i+1, an, ac, ah, sn_, sc, dn, dc])
 
         # ── Dashboard ────────────────────────────────────────────────────
         ws = wb.create_sheet("Dashboard", 0)
@@ -4975,13 +4983,18 @@ class MacroLockAnalyzerApp:
         ws["A4"].fill=_fill(LTBG); ws["A4"].font=Font(name="Arial",color=NAVY,size=10,bold=True)
         ws["A4"].alignment=Alignment(horizontal="right",vertical="center")
         ws.merge_cells("C4:E4")
-        sel=ws["C4"]; sel.value=machines[0]
+        sel=ws["C4"]; sel.value=machines_display[0]
         sel.fill=_fill(WHITE); sel.font=Font(name="Arial",color=NAVY,size=11,bold=True); sel.alignment=_lft()
         sel.border=Border(left=Side(style="medium",color=TEAL), right=_side(), top=_side(), bottom=_side())
-        dv=DataValidation(type="list",formula1='"'+",".join(machines)+'"',allow_blank=False,showDropDown=False)
+        dv=DataValidation(type="list",formula1='"'+",".join(machines_display)+'"',allow_blank=False,showDropDown=False)
         dv.sqref="C4"; ws.add_data_validation(dv)
 
+        # M4 (oculto) extrai o nome real da máquina de dentro dos parênteses
+        ws["M4"].value='=IFERROR(MID(C4,FIND("(",C4)+1,FIND(")",C4)-FIND("(",C4)-1),C4)'
+        ws.column_dimensions["M"].hidden=True
+
         SEL="Dashboard!$C$4"
+        MKEY="Dashboard!$M$4"   # nome real da máquina para COUNTIF/SUMIF
         MF=f"MATCH({SEL},Dados_Dash!$A:$A,0)"
 
         # Fórmulas helper (colunas J/K) — apps 12..21, sites 23..32, days 34..40
@@ -5005,10 +5018,10 @@ class MacroLockAnalyzerApp:
         ws.row_dimensions[5].height=10
         ws.row_dimensions[6].height=20; ws.row_dimensions[7].height=36; ws.row_dimensions[8].height=4
         cards=[
-            (3, "TOTAL DE REGISTROS",        f"=COUNTIF(Relatorio!$E:$E,{SEL})", "#,##0", NAVY),
-            (5, "HORAS FORA DO HORÁRIO",      f"=ROUND(SUMIF(Relatorio!$E:$E,{SEL},Relatorio!$K:$K)/3600,1)", '#,##0.0 "h"', TEAL),
+            (3, "TOTAL DE REGISTROS",        f"=COUNTIF(Relatorio!$E:$E,{MKEY})", "#,##0", NAVY),
+            (5, "HORAS FORA DO HORÁRIO",      f"=ROUND(SUMIF(Relatorio!$E:$E,{MKEY},Relatorio!$K:$K)/3600,1)", '#,##0.0 "h"', TEAL),
             (7, "APLICATIVOS DISTINTOS",
-             f'=SUMPRODUCT(({SEL}=Relatorio!$E$2:$E$20000)*(Relatorio!$H$2:$H$20000<>"")*(1/COUNTIFS(Relatorio!$E$2:$E$20000,{SEL},Relatorio!$H$2:$H$20000,Relatorio!$H$2:$H$20000)))',
+             f'=IFERROR(SUMPRODUCT(({MKEY}=Relatorio!$E$2:$E$20000)*(Relatorio!$H$2:$H$20000<>"")*IFERROR(1/COUNTIFS(Relatorio!$E$2:$E$20000,{MKEY},Relatorio!$H$2:$H$20000,Relatorio!$H$2:$H$20000),0)),0)',
              "#,##0", AMBER),
             (9, "MÁQUINAS NO RELATÓRIO",      f"={len(machines)}", "#,##0", "5B21B6"),
         ]
