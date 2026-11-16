@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "Umbrela Analytics"
-APP_VERSION = "8.32"
+APP_VERSION = "8.33"
 GITHUB_REPO = "jsilvacps/umbrela-analytics"   # repositório público de releases
 DEFAULT_EXCLUDE = "OFFLINE, [LOCK.OFFLINE], [LOCK.LOGIN], LOGIN, LOGOUT"
 LOGO_FILE = "logo_umbrela_analytics.png"
@@ -4236,11 +4236,20 @@ class MacroLockAnalyzerApp:
     def _report_where(self, report_type: str, start: str, end: str):
         params = []
         if report_type == "fora_horario":
-            where = f"(CAST(DataHoraTs AS TIME) >= TIME '{start}' OR CAST(DataHoraTs AS TIME) < TIME '{end}')"
+            if start <= end:
+                # Intervalo no mesmo dia (ex: 18:00 → 23:59)
+                where = f"(CAST(DataHoraTs AS TIME) >= TIME '{start}' AND CAST(DataHoraTs AS TIME) <= TIME '{end}')"
+            else:
+                # Intervalo que cruza meia-noite (ex: 18:00 → 07:00)
+                where = f"(CAST(DataHoraTs AS TIME) >= TIME '{start}' OR CAST(DataHoraTs AS TIME) < TIME '{end}')"
         elif report_type == "fim_semana":
             where = "CAST(strftime(DataHoraTs, '%w') AS INTEGER) IN (0, 6)"
         elif report_type == "fora_horario_fim_semana":
-            where = f"((CAST(DataHoraTs AS TIME) >= TIME '{start}' OR CAST(DataHoraTs AS TIME) < TIME '{end}') OR CAST(strftime(DataHoraTs, '%w') AS INTEGER) IN (0, 6))"
+            if start <= end:
+                hora_cond = f"(CAST(DataHoraTs AS TIME) >= TIME '{start}' AND CAST(DataHoraTs AS TIME) <= TIME '{end}')"
+            else:
+                hora_cond = f"(CAST(DataHoraTs AS TIME) >= TIME '{start}' OR CAST(DataHoraTs AS TIME) < TIME '{end}')"
+            where = f"({hora_cond} OR CAST(strftime(DataHoraTs, '%w') AS INTEGER) IN (0, 6))"
         elif report_type == "por_usuario_equipamento":
             where = "1=1"
         elif report_type == "intervalo_horario":
