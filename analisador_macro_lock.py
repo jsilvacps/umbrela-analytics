@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "Umbrela Analytics"
-APP_VERSION = "8.33"
+APP_VERSION = "8.34"
 GITHUB_REPO = "jsilvacps/umbrela-analytics"   # repositório público de releases
 DEFAULT_EXCLUDE = "OFFLINE, [LOCK.OFFLINE], [LOCK.LOGIN], LOGIN, LOGOUT"
 LOGO_FILE = "logo_umbrela_analytics.png"
@@ -216,7 +216,8 @@ class MacroLockAnalyzerApp:
         self.night_start = tk.StringVar(value="18:00:00")
         self.night_end = tk.StringVar(value="07:00:00")
         self.report_type = tk.StringVar(value="fora_horario")
-        self.report_format = tk.StringVar(value="xlsx")
+        self.report_format    = tk.StringVar(value="xlsx")
+        self.report_dashboard = tk.BooleanVar(value=True)
         self.report_user = tk.StringVar(value="")
         self.report_equipment = tk.StringVar(value="")
         self.base_export_format = tk.StringVar(value="csv_xlsx")
@@ -3359,6 +3360,11 @@ class MacroLockAnalyzerApp:
         ttk.Radiobutton(fmt_row, text="Excel .xlsx", variable=self.report_format, value="xlsx").pack(side="left")
         ttk.Radiobutton(fmt_row, text="CSV .csv",    variable=self.report_format, value="csv").pack(side="left", padx=(16, 0))
 
+        dash_row = ttk.Frame(card, style="Card.TFrame")
+        dash_row.pack(anchor="w", pady=(4, 0))
+        ttk.Checkbutton(dash_row, text="📊 Incluir aba Dashboard (por máquina) no Excel",
+                        variable=self.report_dashboard).pack(side="left")
+
         action = ttk.Frame(parent)
         action.pack(fill="x", pady=(12, 0))
         ttk.Button(action, text="▶  Gerar Relatório", style="Accent.TButton", command=self.start_report).pack(side="left")
@@ -4841,6 +4847,258 @@ class MacroLockAnalyzerApp:
             pct = 55 + ((part + 1) / parts) * 40
             self.progress_value.set(pct)
         workbook.close()
+        if getattr(self, "report_dashboard", None) and self.report_dashboard.get() and self.report_format.get() == "xlsx":
+            try:
+                self.write_log("📊 Gerando Dashboard...")
+                self._add_dashboard_to_xlsx(out_path)
+                self.write_log("📊 Dashboard adicionado com sucesso.")
+            except Exception as _de:
+                self.write_log(f"⚠ Dashboard não gerado: {_de}", "warn")
+
+
+    def _add_dashboard_to_xlsx(self, xlsx_path):
+        """Adiciona abas Dados_Dash + Dashboard ao arquivo Excel gerado."""
+        import pandas as pd
+        import openpyxl
+        from openpyxl.chart import BarChart, Reference
+        from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+        from openpyxl.utils import get_column_letter
+        from openpyxl.worksheet.datavalidation import DataValidation
+
+        def _fill(h): return PatternFill("solid", fgColor=h)
+        def _font(h, sz=10, bold=False, italic=False):
+            return Font(name="Arial", color=h, size=sz, bold=bold, italic=italic)
+        def _side(): return Side(style="thin", color="CBD5E0")
+        def _ball(): return Border(left=_side(), right=_side(), top=_side(), bottom=_side())
+        def _ctr():  return Alignment(horizontal="center", vertical="center", wrap_text=True)
+        def _lft():  return Alignment(horizontal="left", vertical="center")
+
+        NAVY="1E3A5F"; TEAL="0D9488"; AMBER="D97706"
+        LTBG="F0F4F8"; WHITE="FFFFFF"; TEXT="1A202C"; MUTED="718096"
+        TOP_N=10
+        DAY_ORDER=["Segunda-feira","Terça-feira","Quarta-feira",
+                   "Quinta-feira","Sexta-feira","Sábado","Domingo"]
+        BLOCK=max(TOP_N, len(DAY_ORDER))
+
+        # Lê dados
+        df = pd.read_excel(str(xlsx_path), sheet_name=None)
+        # Pega a primeira aba que começa com "Relatorio"
+        rel_key = next((k for k in df if k.startswith("Relatorio")), None)
+        if not rel_key:
+            raise ValueError("Aba Relatorio não encontrada.")
+        rdf = df[rel_key]
+        rdf["DuracaoSegundos"] = pd.to_numeric(rdf.get("DuracaoSegundos", pd.Series(dtype=float)), errors="coerce").fillna(0)
+
+        machines = sorted(rdf["Equipamento"].dropna().unique().tolist())
+        if not machines:
+            raise ValueError("Nenhuma máquina encontrada no relatório.")
+
+        def _top_apps(mdf):
+            t = (mdf[mdf["Aplicativo"].notna() & (mdf["Aplicativo"] != "")]
+                 .groupby("Aplicativo")
+                 .agg(Contagem=("Aplicativo","count"), Horas=("DuracaoSegundos","sum"))
+                 .reset_index().sort_values("Contagem", ascending=False).head(TOP_N))
+            t["Horas"] = (t["Horas"] / 3600).round(1)
+            return t.reset_index(drop=True)
+
+        def _top_sites(mdf):
+            browsers = {"chrome.exe","msedge.exe","firefox.exe","iexplore.exe","opera.exe"}
+            bdf = mdf[mdf["Aplicativo"].str.lower().isin(browsers) & mdf["JanelaEvento"].notna()] \
+                if "JanelaEvento" in mdf.columns else pd.DataFrame()
+            if bdf.empty and "CampoExtra" in mdf.columns:
+                bdf = mdf[mdf["CampoExtra"].str.contains(r"\.", na=False)]
+            col = "JanelaEvento" if ("JanelaEvento" in bdf.columns and not bdf.empty) else "CampoExtra"
+            if bdf.empty or col not in bdf.columns:
+                return pd.DataFrame(columns=["Janela","Contagem"])
+            t = (bdf[bdf[col].notna()].groupby(col).size()
+                 .reset_index(name="Contagem").sort_values("Contagem",ascending=False).head(TOP_N))
+            t.columns = ["Janela","Contagem"]
+            return t.reset_index(drop=True)
+
+        def _by_day(mdf):
+            t = (mdf.groupby("DiaSemana").size().reindex(DAY_ORDER)
+                 .fillna(0).astype(int).reset_index())
+            t.columns = ["Dia","Contagem"]
+            return t
+
+        mdata = {}
+        for m in machines:
+            mdf = rdf[rdf["Equipamento"] == m]
+            mdata[m] = {"apps": _top_apps(mdf), "sites": _top_sites(mdf),
+                        "days": _by_day(mdf)}
+
+        wb = openpyxl.load_workbook(str(xlsx_path))
+        for sn in ["Dashboard","Dados_Dash"]:
+            if sn in wb.sheetnames: del wb[sn]
+
+        # ── Dados_Dash (oculta) ──────────────────────────────────────────
+        wsd = wb.create_sheet("Dados_Dash")
+        wsd.sheet_state = "hidden"
+        wsd.append(["Maquina","Rank","Aplicativo","Contagem_App","Horas_App",
+                    "Site_Janela","Contagem_Site","Dia","Contagem_Dia"])
+        for m in machines:
+            da = mdata[m]
+            apps=da["apps"]; sites=da["sites"]; days=da["days"]
+            for i in range(BLOCK):
+                an = apps.iloc[i]["Aplicativo"] if i<len(apps) else ""
+                ac = int(apps.iloc[i]["Contagem"]) if i<len(apps) else ""
+                ah = apps.iloc[i]["Horas"]     if i<len(apps) else ""
+                sn_ = sites.iloc[i]["Janela"]  if i<len(sites) else ""
+                sc = int(sites.iloc[i]["Contagem"]) if i<len(sites) else ""
+                dn = days.iloc[i]["Dia"]       if i<len(days) else ""
+                dc = int(days.iloc[i]["Contagem"]) if i<len(days) else ""
+                wsd.append([m, i+1, an, ac, ah, sn_, sc, dn, dc])
+
+        # ── Dashboard ────────────────────────────────────────────────────
+        ws = wb.create_sheet("Dashboard", 0)
+        ws.sheet_view.showGridLines = False
+        for col,w in {"A":2,"B":4,"C":32,"D":14,"E":12,"F":2,"G":32,"H":14,"I":2,"J":28,"K":16,"L":2}.items():
+            ws.column_dimensions[col].width = w
+
+        # Título
+        ws.row_dimensions[1].height = 36
+        ws.merge_cells("A1:L1")
+        c=ws["A1"]; c.value="⏰  DASHBOARD — CONTROLE FORA DO HORÁRIO"
+        c.fill=_fill(NAVY); c.font=Font(name="Arial",color=WHITE,size=16,bold=True); c.alignment=_ctr()
+        ws.row_dimensions[2].height=18
+        ws.merge_cells("A2:L2")
+        c=ws["A2"]; c.value="Selecione a máquina no campo abaixo — os gráficos atualizam automaticamente"
+        c.fill=_fill(NAVY); c.font=Font(name="Arial",color="A0AEC0",size=9,italic=True); c.alignment=_ctr()
+
+        # Seletor
+        ws.row_dimensions[3].height=8
+        ws.row_dimensions[4].height=28
+        ws.merge_cells("A4:B4"); ws["A4"].value="🖥  MÁQUINA:"
+        ws["A4"].fill=_fill(LTBG); ws["A4"].font=Font(name="Arial",color=NAVY,size=10,bold=True)
+        ws["A4"].alignment=Alignment(horizontal="right",vertical="center")
+        ws.merge_cells("C4:E4")
+        sel=ws["C4"]; sel.value=machines[0]
+        sel.fill=_fill(WHITE); sel.font=Font(name="Arial",color=NAVY,size=11,bold=True); sel.alignment=_lft()
+        sel.border=Border(left=Side(style="medium",color=TEAL), right=_side(), top=_side(), bottom=_side())
+        dv=DataValidation(type="list",formula1='"'+",".join(machines)+'"',allow_blank=False,showDropDown=False)
+        dv.sqref="C4"; ws.add_data_validation(dv)
+
+        SEL="Dashboard!$C$4"
+        MF=f"MATCH({SEL},Dados_Dash!$A:$A,0)"
+
+        # Fórmulas helper (colunas J/K) — apps 12..21, sites 23..32, days 34..40
+        APPS_S=12; SITES_S=23; DAYS_S=34
+        for i in range(TOP_N):
+            r=APPS_S+i
+            ws.cell(r,10).value=f"=IFERROR(INDEX(Dados_Dash!$C:$C,{MF}+{i}),\"\")"
+            ws.cell(r,11).value=f"=IFERROR(INDEX(Dados_Dash!$D:$D,{MF}+{i}),\"\")"
+        for i in range(TOP_N):
+            r=SITES_S+i
+            ws.cell(r,10).value=f"=IFERROR(INDEX(Dados_Dash!$F:$F,{MF}+{i}),\"\")"
+            ws.cell(r,11).value=f"=IFERROR(INDEX(Dados_Dash!$G:$G,{MF}+{i}),\"\")"
+        for i in range(len(DAY_ORDER)):
+            r=DAYS_S+i
+            ws.cell(r,10).value=f"=IFERROR(INDEX(Dados_Dash!$H:$H,{MF}+{i}),\"\")"
+            ws.cell(r,11).value=f"=IFERROR(INDEX(Dados_Dash!$I:$I,{MF}+{i}),\"\")"
+        ws.column_dimensions["J"].hidden=True
+        ws.column_dimensions["K"].hidden=True
+
+        # Cards de resumo (linha 6-8)
+        ws.row_dimensions[5].height=10
+        ws.row_dimensions[6].height=20; ws.row_dimensions[7].height=36; ws.row_dimensions[8].height=4
+        cards=[
+            (3, "TOTAL DE REGISTROS",        f"=COUNTIF(Relatorio!$E:$E,{SEL})", "#,##0", NAVY),
+            (5, "HORAS FORA DO HORÁRIO",      f"=ROUND(SUMIF(Relatorio!$E:$E,{SEL},Relatorio!$K:$K)/3600,1)", '#,##0.0 "h"', TEAL),
+            (7, "APLICATIVOS DISTINTOS",
+             f'=SUMPRODUCT(({SEL}=Relatorio!$E$2:$E$20000)*(Relatorio!$H$2:$H$20000<>"")*(1/COUNTIFS(Relatorio!$E$2:$E$20000,{SEL},Relatorio!$H$2:$H$20000,Relatorio!$H$2:$H$20000)))',
+             "#,##0", AMBER),
+            (9, "MÁQUINAS NO RELATÓRIO",      f"={len(machines)}", "#,##0", "5B21B6"),
+        ]
+        for cs,lbl,formula,fmt,acc in cards:
+            ws.merge_cells(f"{get_column_letter(cs)}6:{get_column_letter(cs+1)}6")
+            ws.merge_cells(f"{get_column_letter(cs)}7:{get_column_letter(cs+1)}7")
+            ws.merge_cells(f"{get_column_letter(cs)}8:{get_column_letter(cs+1)}8")
+            tc=ws[f"{get_column_letter(cs)}6"]; tc.value=lbl
+            tc.fill=_fill(acc); tc.font=Font(name="Arial",color=WHITE,size=8,bold=True); tc.alignment=_ctr()
+            vc=ws[f"{get_column_letter(cs)}7"]; vc.value=formula; vc.number_format=fmt
+            vc.fill=_fill(WHITE); vc.font=Font(name="Arial",color=NAVY,size=16,bold=True); vc.alignment=_ctr()
+            for r in [6,8]:
+                for col in range(cs,cs+2):
+                    try: ws.cell(row=r,column=col).fill=_fill(acc)
+                    except AttributeError: pass
+
+        # ── Tabela Apps ──────────────────────────────────────────────────
+        ws.row_dimensions[9].height=10; ws.row_dimensions[10].height=24; ws.row_dimensions[11].height=18
+        ws.merge_cells("C10:E10"); t=ws["C10"]; t.value="📱  TOP 10 APLICATIVOS"
+        t.fill=_fill(TEAL); t.font=Font(name="Arial",color=WHITE,size=11,bold=True); t.alignment=_lft()
+        t.border=Border(left=Side(style="medium",color=TEAL))
+        for col,lbl in zip(["C","D","E"],["Aplicativo","Registros","Horas"]):
+            c=ws[f"{col}11"]; c.value=lbl; c.fill=_fill("E8F4F8")
+            c.font=Font(name="Arial",color=NAVY,size=9,bold=True); c.alignment=_ctr(); c.border=_ball()
+        for i in range(TOP_N):
+            row=APPS_S+i; bg=WHITE if i%2==0 else LTBG
+            ws.row_dimensions[row].height=16
+            ca=ws[f"C{row}"]; ca.value=f"=J{row}"; ca.fill=_fill(bg)
+            ca.font=Font(name="Arial",color=TEXT,size=9); ca.alignment=_lft(); ca.border=_ball()
+            cb=ws[f"D{row}"]; cb.value=f"=IF(K{row}=\"\",\"\",K{row})"; cb.number_format="#,##0"
+            cb.fill=_fill(bg); cb.font=Font(name="Arial",color=NAVY,size=9,bold=True); cb.alignment=_ctr(); cb.border=_ball()
+            cc=ws[f"E{row}"]; cc.value=f"=IFERROR(INDEX(Dados_Dash!$E:$E,{MF}+{i}),\"\")"
+            cc.number_format='#,##0.0 "h"'; cc.fill=_fill(bg)
+            cc.font=Font(name="Arial",color=MUTED,size=9); cc.alignment=_ctr(); cc.border=_ball()
+
+        # ── Tabela Sites ─────────────────────────────────────────────────
+        ws.row_dimensions[22].height=10; ws.row_dimensions[22].height=24; ws.row_dimensions[22].height=10
+        S2T=22
+        ws.row_dimensions[S2T].height=24; ws.row_dimensions[S2T+1].height=18
+        ws.merge_cells(f"C{S2T}:E{S2T}"); t=ws[f"C{S2T}"]; t.value="🌐  TOP 10 SITES / JANELAS"
+        t.fill=_fill(AMBER); t.font=Font(name="Arial",color=WHITE,size=11,bold=True); t.alignment=_lft()
+        t.border=Border(left=Side(style="medium",color=AMBER))
+        for col,lbl in zip(["C","D"],["Site / Janela","Registros"]):
+            c=ws[f"{col}{S2T+1}"]; c.value=lbl; c.fill=_fill("FEF9EC")
+            c.font=Font(name="Arial",color=NAVY,size=9,bold=True); c.alignment=_ctr(); c.border=_ball()
+        for i in range(TOP_N):
+            row=SITES_S+i; jrow=SITES_S+i; bg=WHITE if i%2==0 else "FFFBEB"
+            ws.row_dimensions[row].height=16
+            ca=ws[f"C{row}"]; ca.value=f"=J{jrow}"; ca.fill=_fill(bg)
+            ca.font=Font(name="Arial",color=TEXT,size=9); ca.alignment=_lft(); ca.border=_ball()
+            cb=ws[f"D{row}"]; cb.value=f"=IF(K{jrow}=\"\",\"\",K{jrow})"; cb.number_format="#,##0"
+            cb.fill=_fill(bg); cb.font=Font(name="Arial",color=NAVY,size=9,bold=True); cb.alignment=_ctr(); cb.border=_ball()
+
+        # ── Tabela Dias ───────────────────────────────────────────────────
+        S3T=DAYS_S-1
+        ws.row_dimensions[S3T].height=24; ws.row_dimensions[S3T+1].height=18
+        ws.merge_cells(f"C{S3T}:E{S3T}"); t=ws[f"C{S3T}"]; t.value="📅  REGISTROS POR DIA DA SEMANA"
+        t.fill=_fill(NAVY); t.font=Font(name="Arial",color=WHITE,size=11,bold=True); t.alignment=_lft()
+        for col,lbl in zip(["C","D"],["Dia","Registros"]):
+            c=ws[f"{col}{S3T+1}"]; c.value=lbl; c.fill=_fill("E8EAF6")
+            c.font=Font(name="Arial",color=NAVY,size=9,bold=True); c.alignment=_ctr(); c.border=_ball()
+        for i in range(len(DAY_ORDER)):
+            row=DAYS_S+i; bg=WHITE if i%2==0 else LTBG
+            ws.row_dimensions[row].height=16
+            ca=ws[f"C{row}"]; ca.value=f"=J{row}"; ca.fill=_fill(bg)
+            ca.font=Font(name="Arial",color=TEXT,size=9); ca.alignment=_lft(); ca.border=_ball()
+            cb=ws[f"D{row}"]; cb.value=f"=IF(K{row}=\"\",\"\",K{row})"; cb.number_format="#,##0"
+            cb.fill=_fill(bg); cb.font=Font(name="Arial",color=NAVY,size=9,bold=True); cb.alignment=_ctr(); cb.border=_ball()
+
+        # ── Gráficos ──────────────────────────────────────────────────────
+        def _make_chart(chart_type, bar_dir, title, col_color, cats_rows, vals_rows, anchor):
+            ch = BarChart(); ch.type=bar_dir; ch.grouping="clustered"
+            ch.title=title; ch.style=10; ch.legend=None
+            ch.width=14; ch.height=10; ch.roundedCorners=False
+            ch.x_axis.delete=False; ch.y_axis.delete=False
+            cats=Reference(ws, min_col=10, min_row=cats_rows[0], max_row=cats_rows[1])
+            vals=Reference(ws, min_col=11, min_row=vals_rows[0], max_row=vals_rows[1])
+            ch.add_data(vals); ch.set_categories(cats)
+            ch.series[0].graphicalProperties.solidFill=col_color
+            ch.series[0].graphicalProperties.line.solidFill=col_color
+            ws.add_chart(ch, anchor)
+
+        _make_chart("bar","bar","Top 10 Aplicativos",TEAL,(APPS_S,APPS_S+TOP_N-1),(APPS_S,APPS_S+TOP_N-1),"G10")
+        _make_chart("bar","bar","Top 10 Sites / Janelas",AMBER,(SITES_S,SITES_S+TOP_N-1),(SITES_S,SITES_S+TOP_N-1),"G22")
+        _make_chart("col","col","Registros por Dia da Semana",NAVY,(DAYS_S,DAYS_S+6),(DAYS_S,DAYS_S+6),"G34")
+
+        ws.freeze_panes="A9"
+
+        # Reordenar: Dashboard primeiro
+        order=["Dashboard"]+[s for s in wb.sheetnames if s not in ("Dashboard","Dados_Dash")]+["Dados_Dash"]
+        wb._sheets.sort(key=lambda s: order.index(s.title) if s.title in order else 99)
+
+        wb.save(str(xlsx_path))
 
 
 def main():
