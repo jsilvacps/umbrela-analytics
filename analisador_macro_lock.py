@@ -2109,7 +2109,7 @@ class MacroLockAnalyzerApp:
         btn_row.pack(anchor="w", pady=(4, 0))
 
         self._ms_status_lbl = tk.Label(btn_row, text="● Não conectado", bg=c["card"],
-                                       fg=c["warn"], font=("Segoe UI", 9, "bold"))
+                                       fg="#FDE68A", font=("Segoe UI", 9, "bold"))
         self._ms_status_lbl.pack(side="left", padx=(0, 16))
 
         def _connect():
@@ -2121,11 +2121,11 @@ class MacroLockAnalyzerApp:
                     users = self._ms_list_users()
                     self._ms_users = users
                     self.root.after(0, lambda: self._ms_status_lbl.configure(
-                        text=f"● Conectado — {len(users)} usuário(s)", fg=c["ok"]))
+                        text=f"● Conectado — {len(users)} usuário(s)", fg="#6EE7B7"))
                     self.root.after(0, _refresh_tree)
                 except Exception as ex:
                     self.root.after(0, lambda: self._ms_status_lbl.configure(
-                        text=f"● Erro: {ex}", fg=c["error"]))
+                        text=f"● Erro: {ex}", fg="#FCA5A5"))
             _thr.Thread(target=_do, daemon=True).start()
 
         ttk.Button(btn_row, text="🔗  Conectar", style="Accent.TButton", command=_connect).pack(side="left")
