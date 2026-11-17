@@ -768,58 +768,86 @@ class MacroLockAnalyzerApp:
 
         self._show_page = _show
 
-        _ferramentas_shown = [False]
-        for key, icon, label, is_sub in nav_list:
-            # Cabeçalho de grupo "Ferramentas" antes do primeiro sub-item
-            if is_sub and not _ferramentas_shown[0]:
-                _ferramentas_shown[0] = True
-                tk.Label(sidebar, text="  FERRAMENTAS", bg=c["sidebar"], fg="#2D5A8A",
-                         font=("Segoe UI", 7, "bold")).pack(fill="x", padx=8, pady=(10, 2))
+        # ── Grupo "Ferramentas" com accordion ───────────────────────────
+        _ferr_expanded = [False]
+        _ferr_sub_frames = []
 
-            padx_left = 20 if is_sub else 12
-            outer_n = tk.Frame(sidebar, bg=c["sidebar"], cursor="hand2")
+        def _make_nav_item(parent, key, icon, label, padx_left=12):
+            outer_n = tk.Frame(parent, bg=c["sidebar"], cursor="hand2")
             outer_n.pack(fill="x", pady=1)
-
             ind = tk.Frame(outer_n, bg=c["sidebar"], width=3)
             ind.pack(side="left", fill="y")
-
             inner_n = tk.Frame(outer_n, bg=c["sidebar"], pady=10, padx=padx_left)
             inner_n.pack(side="left", fill="both", expand=True)
-
             icon_lbl = tk.Label(inner_n, text=icon, bg=c["sidebar"], fg="#8AAED4",
                                 font=("Segoe UI", 11), width=2, cursor="hand2")
             icon_lbl.pack(side="left")
             text_lbl = tk.Label(inner_n, text=label, bg=c["sidebar"], fg="#8AAED4",
                                 font=("Segoe UI", 10), cursor="hand2")
             text_lbl.pack(side="left", padx=(8, 0))
-
-            wlist = [
-                (ind,      "ind"),
-                (outer_n,  "bg"),
-                (inner_n,  "bg"),
-                (icon_lbl, "fg"),
-                (text_lbl, "fg"),
-            ]
-            self._nav_items[key] = wlist
-
-            cb = lambda e, k=key: _show(k)
-            for w, _ in wlist:
-                w.bind("<Button-1>", cb)
-            # Hover
+            wlist = [(ind,"ind"),(outer_n,"bg"),(inner_n,"bg"),(icon_lbl,"fg"),(text_lbl,"fg")]
+            if key:
+                self._nav_items[key] = wlist
+                cb = lambda e, k=key: _show(k)
+                for w, _ in wlist: w.bind("<Button-1>", cb)
             def _hover_in(e, wl=wlist):
-                if self._cur_page != [k for k, ww in self._nav_items.items() if ww is wl][0]:
+                k_cur = [k for k,ww in self._nav_items.items() if ww is wl]
+                if not k_cur or self._cur_page != k_cur[0]:
                     for w, attr in wl:
                         if attr in ("bg",): w.configure(bg=c["sidehov"])
                         if attr == "fg": w.configure(bg=c["sidehov"])
             def _hover_out(e, wl=wlist):
-                k_this = [k for k, ww in self._nav_items.items() if ww is wl][0]
-                if self._cur_page != k_this:
+                k_cur = [k for k,ww in self._nav_items.items() if ww is wl]
+                if not k_cur or self._cur_page != k_cur[0]:
                     for w, attr in wl:
                         if attr in ("bg",): w.configure(bg=c["sidebar"])
                         if attr == "fg": w.configure(bg=c["sidebar"])
             for w, _ in wlist:
                 w.bind("<Enter>", _hover_in)
                 w.bind("<Leave>", _hover_out)
+            return outer_n, wlist
+
+        for key, icon, label, is_sub in nav_list:
+            if not is_sub:
+                _make_nav_item(sidebar, key, icon, label, padx_left=12)
+            else:
+                # Primeiro sub-item: cria o item "Ferramentas" (accordion header)
+                if not _ferr_sub_frames:
+                    ferr_outer = tk.Frame(sidebar, bg=c["sidebar"], cursor="hand2")
+                    ferr_outer.pack(fill="x", pady=1)
+                    ferr_ind = tk.Frame(ferr_outer, bg=c["sidebar"], width=3)
+                    ferr_ind.pack(side="left", fill="y")
+                    ferr_inner = tk.Frame(ferr_outer, bg=c["sidebar"], pady=10, padx=12)
+                    ferr_inner.pack(side="left", fill="both", expand=True)
+                    tk.Label(ferr_inner, text="🧰", bg=c["sidebar"], fg="#8AAED4",
+                             font=("Segoe UI", 11), width=2).pack(side="left")
+                    ferr_lbl = tk.Label(ferr_inner, text="Ferramentas", bg=c["sidebar"],
+                                        fg="#8AAED4", font=("Segoe UI", 10))
+                    ferr_lbl.pack(side="left", padx=(8, 0))
+                    self._ferr_arrow = tk.Label(ferr_inner, text="▶", bg=c["sidebar"],
+                                                fg="#2D5A8A", font=("Segoe UI", 8))
+                    self._ferr_arrow.pack(side="right", padx=(0, 8))
+                    # Container dos sub-itens (inicialmente oculto)
+                    ferr_sub_container = tk.Frame(sidebar, bg=c["sidebar"])
+
+                    def _toggle_ferr(e=None):
+                        if _ferr_expanded[0]:
+                            ferr_sub_container.pack_forget()
+                            self._ferr_arrow.configure(text="▶")
+                            _ferr_expanded[0] = False
+                        else:
+                            ferr_sub_container.pack(fill="x")
+                            self._ferr_arrow.configure(text="▼")
+                            _ferr_expanded[0] = True
+
+                    for w in [ferr_outer, ferr_inner, ferr_lbl, self._ferr_arrow]:
+                        w.bind("<Button-1>", _toggle_ferr)
+                    for w in [ferr_outer, ferr_inner]:
+                        w.bind("<Enter>", lambda e: ferr_outer.configure(bg=c["sidehov"]) or ferr_inner.configure(bg=c["sidehov"]))
+                        w.bind("<Leave>", lambda e: ferr_outer.configure(bg=c["sidebar"]) or ferr_inner.configure(bg=c["sidebar"]))
+
+                _make_nav_item(ferr_sub_container, key, icon, label, padx_left=28)
+                _ferr_sub_frames.append(key)
 
         # Separador + versão no rodapé da sidebar
         tk.Label(sidebar, text=f"v{APP_VERSION} · © 2026 Jean Silva",
