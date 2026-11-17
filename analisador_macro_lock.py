@@ -836,7 +836,7 @@ class MacroLockAnalyzerApp:
                             self._ferr_arrow.configure(text="▶")
                             _ferr_expanded[0] = False
                         else:
-                            ferr_sub_container.pack(fill="x")
+                            ferr_sub_container.pack(fill="x", after=ferr_outer)
                             self._ferr_arrow.configure(text="▼")
                             _ferr_expanded[0] = True
 
