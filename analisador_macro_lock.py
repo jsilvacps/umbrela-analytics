@@ -204,6 +204,15 @@ class MacroLockAnalyzerApp:
         self._mk_date_end   = tk.StringVar(value="")
         self._mk_report_type = tk.StringVar(value="sessions")
         self._mk_busy    = False
+        # ── Microsoft Graph API ───────────────────────────────────────────
+        self._ms_config_file = app_dir() / "ms_config.json"
+        _ms_cfg = self._ms_load_config()
+        self._ms_tenant_id     = tk.StringVar(value=_ms_cfg.get("tenant_id", ""))
+        self._ms_client_id     = tk.StringVar(value=_ms_cfg.get("client_id", ""))
+        self._ms_client_secret = tk.StringVar(value=_ms_cfg.get("client_secret", ""))
+        self._ms_token: str = ""
+        self._ms_token_exp: float = 0.0
+        self._ms_users: list = []
         self.output_path = tk.StringVar(value=r"C:\Users\TI\Desktop\indicadores")
         self.output_filename = tk.StringVar(value="")
         # Controle de Horário
@@ -715,18 +724,20 @@ class MacroLockAnalyzerApp:
         self._cur_page = None
 
         nav_list = [
-            ("inicio",     "⌂", "Início"),
-            ("makrolock",  "⬡", "Makrolock"),
-            ("processar",  "⚙", "Processar"),
-            ("relatorios", "≡", "Relatórios"),
+            ("inicio",      "⌂", "Início",      False),
+            ("makrolock",   "⬡", "Makrolock",   True),
+            ("microsoft",   "🪟", "Microsoft",   True),
+            ("processar",   "⚙", "Processar",   False),
+            ("relatorios",  "≡", "Relatórios",  False),
         ]
-        for key, icon, label in nav_list:
+        for key, icon, label, _sub in nav_list:
             page = tk.Frame(content_area, bg=c["bg"], padx=24, pady=20)
             self._pages[key] = page
 
         _page_titles = {
             "inicio":     ("Início",     "Umbrela Analytics"),
             "makrolock":  ("Makrolock",  "Monitoramento de acessos"),
+            "microsoft":  ("Microsoft",  "Gestão de usuários Microsoft 365"),
             "processar":  ("Processar",  "Importar e tratar dados"),
             "relatorios": ("Relatórios", "Análise e exportação"),
         }
@@ -757,14 +768,22 @@ class MacroLockAnalyzerApp:
 
         self._show_page = _show
 
-        for key, icon, label in nav_list:
+        _ferramentas_shown = [False]
+        for key, icon, label, is_sub in nav_list:
+            # Cabeçalho de grupo "Ferramentas" antes do primeiro sub-item
+            if is_sub and not _ferramentas_shown[0]:
+                _ferramentas_shown[0] = True
+                tk.Label(sidebar, text="  FERRAMENTAS", bg=c["sidebar"], fg="#2D5A8A",
+                         font=("Segoe UI", 7, "bold")).pack(fill="x", padx=8, pady=(10, 2))
+
+            padx_left = 20 if is_sub else 12
             outer_n = tk.Frame(sidebar, bg=c["sidebar"], cursor="hand2")
             outer_n.pack(fill="x", pady=1)
 
             ind = tk.Frame(outer_n, bg=c["sidebar"], width=3)
             ind.pack(side="left", fill="y")
 
-            inner_n = tk.Frame(outer_n, bg=c["sidebar"], pady=10, padx=12)
+            inner_n = tk.Frame(outer_n, bg=c["sidebar"], pady=10, padx=padx_left)
             inner_n.pack(side="left", fill="both", expand=True)
 
             icon_lbl = tk.Label(inner_n, text=icon, bg=c["sidebar"], fg="#8AAED4",
@@ -814,11 +833,13 @@ class MacroLockAnalyzerApp:
         # Constrói páginas
         tab_inicio    = self._pages["inicio"]
         tab_makrolock = self._pages["makrolock"]
+        tab_microsoft = self._pages["microsoft"]
         tab_process   = self._pages["processar"]
         tab_reports   = self._pages["relatorios"]
 
         self._build_inicio_tab(tab_inicio)
         self._build_makrolock_tab(tab_makrolock)
+        self._build_microsoft_tab(tab_microsoft)
         self._build_process_tab(tab_process)
         self._build_reports_tab(tab_reports)
 
@@ -1976,6 +1997,268 @@ class MacroLockAnalyzerApp:
 
     def _mk_save_email(self, email: str):
         self._mk_save_config(email, save_pass=False)
+
+    # ── Microsoft Graph ───────────────────────────────────────────────────
+    def _ms_load_config(self) -> dict:
+        import json
+        try:
+            if self._ms_config_file.exists():
+                return json.loads(self._ms_config_file.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+        return {}
+
+    def _ms_save_config(self):
+        import json
+        data = {"tenant_id": self._ms_tenant_id.get().strip(),
+                "client_id": self._ms_client_id.get().strip(),
+                "client_secret": self._ms_client_secret.get().strip()}
+        try:
+            self._ms_config_file.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
+
+    def _ms_get_token(self) -> str:
+        import time, requests as _req
+        if self._ms_token and time.time() < self._ms_token_exp - 60:
+            return self._ms_token
+        tid = self._ms_tenant_id.get().strip()
+        cid = self._ms_client_id.get().strip()
+        sec = self._ms_client_secret.get().strip()
+        if not (tid and cid and sec):
+            raise ValueError("Configure Tenant ID, Client ID e Client Secret primeiro.")
+        url = f"https://login.microsoftonline.com/{tid}/oauth2/v2.0/token"
+        resp = _req.post(url, data={"grant_type": "client_credentials", "client_id": cid,
+                                    "client_secret": sec, "scope": "https://graph.microsoft.com/.default"}, timeout=15)
+        resp.raise_for_status()
+        j = resp.json()
+        self._ms_token = j["access_token"]
+        self._ms_token_exp = time.time() + j.get("expires_in", 3600)
+        return self._ms_token
+
+    def _ms_graph(self, method: str, path: str, **kwargs):
+        import requests as _req
+        token = self._ms_get_token()
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        url = f"https://graph.microsoft.com/v1.0{path}"
+        resp = _req.request(method, url, headers=headers, timeout=20, **kwargs)
+        resp.raise_for_status()
+        return resp.json() if resp.content else {}
+
+    def _ms_list_users(self):
+        data = self._ms_graph("GET", "/users?$select=id,displayName,userPrincipalName,accountEnabled,jobTitle,department&$top=100&$orderby=displayName")
+        users = data.get("value", [])
+        # pagina se necessário
+        nxt = data.get("@odata.nextLink")
+        while nxt:
+            import requests as _req
+            token = self._ms_get_token()
+            r = _req.get(nxt, headers={"Authorization": f"Bearer {token}"}, timeout=20)
+            r.raise_for_status()
+            d = r.json()
+            users += d.get("value", [])
+            nxt = d.get("@odata.nextLink")
+        return users
+
+    def _ms_set_account_enabled(self, user_id: str, enabled: bool):
+        self._ms_graph("PATCH", f"/users/{user_id}", json={"accountEnabled": enabled})
+
+    def _ms_reset_password(self, user_id: str, new_password: str, force_change: bool = True):
+        self._ms_graph("PATCH", f"/users/{user_id}", json={
+            "passwordProfile": {"password": new_password, "forceChangePasswordNextSignIn": force_change}
+        })
+
+    def _build_microsoft_tab(self, parent):
+        import threading as _thr
+        c = self.COLORS
+
+        scroll_outer = tk.Frame(parent, bg=c["bg"])
+        scroll_outer.pack(fill="both", expand=True)
+        canvas = tk.Canvas(scroll_outer, bg=c["bg"], highlightthickness=0)
+        scrollbar = ttk.Scrollbar(scroll_outer, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        inner = tk.Frame(canvas, bg=c["bg"])
+        win_id = canvas.create_window((0, 0), window=inner, anchor="nw")
+        inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig(win_id, width=e.width))
+        canvas.bind("<MouseWheel>", lambda e: canvas.yview_scroll(-1 * (e.delta // 120), "units"))
+
+        # ── Card configuração ────────────────────────────────────────────
+        outer_cfg, cfg_card = self._card(inner, accent=True)
+        outer_cfg.pack(fill="x", pady=(0, 12))
+        self._section_label(cfg_card, "CONFIGURAÇÃO — AZURE AD / MICROSOFT 365")
+
+        cfg_grid = ttk.Frame(cfg_card, style="Card.TFrame")
+        cfg_grid.pack(fill="x", pady=(0, 8))
+        cfg_grid.columnconfigure(1, weight=1)
+
+        for row, (lbl, var, show) in enumerate([
+            ("Tenant ID",     self._ms_tenant_id,     True),
+            ("Client ID",     self._ms_client_id,     True),
+            ("Client Secret", self._ms_client_secret, False),
+        ]):
+            tk.Label(cfg_grid, text=lbl, bg=c["card"], fg=c["muted"],
+                     font=("Segoe UI", 9)).grid(row=row, column=0, sticky="w", padx=(0, 12), pady=3)
+            show_char = "" if show else "•"
+            ttk.Entry(cfg_grid, textvariable=var, show=show_char, width=48).grid(
+                row=row, column=1, sticky="ew", pady=3)
+
+        btn_row = ttk.Frame(cfg_card, style="Card.TFrame")
+        btn_row.pack(anchor="w", pady=(4, 0))
+
+        self._ms_status_lbl = tk.Label(btn_row, text="● Não conectado", bg=c["card"],
+                                       fg=c["warn"], font=("Segoe UI", 9, "bold"))
+        self._ms_status_lbl.pack(side="left", padx=(0, 16))
+
+        def _connect():
+            self._ms_save_config()
+            self._ms_status_lbl.configure(text="⏳ Conectando...", fg=c["muted"])
+            def _do():
+                try:
+                    self._ms_get_token()
+                    users = self._ms_list_users()
+                    self._ms_users = users
+                    self.root.after(0, lambda: self._ms_status_lbl.configure(
+                        text=f"● Conectado — {len(users)} usuário(s)", fg=c["ok"]))
+                    self.root.after(0, _refresh_tree)
+                except Exception as ex:
+                    self.root.after(0, lambda: self._ms_status_lbl.configure(
+                        text=f"● Erro: {ex}", fg=c["error"]))
+            _thr.Thread(target=_do, daemon=True).start()
+
+        ttk.Button(btn_row, text="🔗  Conectar", style="Accent.TButton", command=_connect).pack(side="left")
+
+        # ── Card pesquisa + tabela ───────────────────────────────────────
+        outer_tbl, tbl_card = self._card(inner)
+        outer_tbl.pack(fill="both", expand=True, pady=(0, 12))
+
+        search_row = ttk.Frame(tbl_card, style="Card.TFrame")
+        search_row.pack(fill="x", pady=(0, 8))
+        search_row.columnconfigure(1, weight=1)
+        tk.Label(search_row, text="🔍  Pesquisar:", bg=c["card"], fg=c["muted"],
+                 font=("Segoe UI", 9)).grid(row=0, column=0, padx=(0, 8))
+        self._ms_search_var = tk.StringVar()
+        ttk.Entry(search_row, textvariable=self._ms_search_var).grid(row=0, column=1, sticky="ew")
+
+        cols = ("Nome", "E-mail", "Cargo", "Depto", "Status")
+        tree_frame = ttk.Frame(tbl_card)
+        tree_frame.pack(fill="both", expand=True)
+        vsb = ttk.Scrollbar(tree_frame, orient="vertical")
+        self._ms_tree = ttk.Treeview(tree_frame, columns=cols, show="headings",
+                                     height=14, yscrollcommand=vsb.set)
+        vsb.configure(command=self._ms_tree.yview)
+        vsb.pack(side="right", fill="y")
+        self._ms_tree.pack(fill="both", expand=True)
+        for col, w in zip(cols, [200, 230, 130, 130, 90]):
+            self._ms_tree.heading(col, text=col)
+            self._ms_tree.column(col, width=w, minwidth=60)
+        self._ms_tree.tag_configure("ativo",    foreground="#6EE7B7")
+        self._ms_tree.tag_configure("bloqueado", foreground="#FCA5A5")
+
+        def _refresh_tree():
+            q = self._ms_search_var.get().lower()
+            self._ms_tree.delete(*self._ms_tree.get_children())
+            for u in self._ms_users:
+                nm = u.get("displayName", "")
+                em = u.get("userPrincipalName", "")
+                if q and q not in nm.lower() and q not in em.lower():
+                    continue
+                st = "Ativo" if u.get("accountEnabled") else "Bloqueado"
+                tag = "ativo" if u.get("accountEnabled") else "bloqueado"
+                self._ms_tree.insert("", "end", iid=u["id"], values=(
+                    nm, em,
+                    u.get("jobTitle", "") or "",
+                    u.get("department", "") or "",
+                    st,
+                ), tags=(tag,))
+
+        self._ms_search_var.trace_add("write", lambda *_: _refresh_tree())
+
+        # ── Card ações ───────────────────────────────────────────────────
+        outer_act, act_card = self._card(inner)
+        outer_act.pack(fill="x", pady=(0, 12))
+        self._section_label(act_card, "AÇÕES NO USUÁRIO SELECIONADO")
+
+        act_row = ttk.Frame(act_card, style="Card.TFrame")
+        act_row.pack(fill="x", pady=(0, 8))
+
+        def _get_sel():
+            sel = self._ms_tree.selection()
+            if not sel:
+                messagebox.showwarning("Microsoft", "Selecione um usuário na tabela.")
+                return None
+            iid = sel[0]
+            return next((u for u in self._ms_users if u["id"] == iid), None)
+
+        def _bloquear():
+            u = _get_sel()
+            if not u: return
+            nm = u.get("displayName", u.get("userPrincipalName", ""))
+            acao = "desbloquear" if not u.get("accountEnabled") else "bloquear"
+            if not messagebox.askyesno("Confirmar", f"Deseja {acao} o usuário {nm}?"):
+                return
+            novo = not u.get("accountEnabled")
+            def _do():
+                try:
+                    self._ms_set_account_enabled(u["id"], novo)
+                    u["accountEnabled"] = novo
+                    self.root.after(0, _refresh_tree)
+                    self.root.after(0, lambda: messagebox.showinfo("Microsoft",
+                        f"Usuário {nm} {'desbloqueado' if novo else 'bloqueado'} com sucesso."))
+                except Exception as ex:
+                    self.root.after(0, lambda: messagebox.showerror("Erro", str(ex)))
+            _thr.Thread(target=_do, daemon=True).start()
+
+        def _resetar_senha():
+            u = _get_sel()
+            if not u: return
+            nm = u.get("displayName", u.get("userPrincipalName", ""))
+            dlg = tk.Toplevel(self.root)
+            dlg.title("Redefinir senha")
+            dlg.resizable(False, False)
+            dlg.grab_set()
+            dlg.configure(bg=c["card"])
+            tk.Label(dlg, text=f"Nova senha para: {nm}", bg=c["card"], fg=c["text"],
+                     font=("Segoe UI", 10, "bold")).pack(padx=20, pady=(16, 4))
+            pw_var = tk.StringVar()
+            ttk.Entry(dlg, textvariable=pw_var, show="•", width=32).pack(padx=20, pady=(0, 4))
+            force_var = tk.BooleanVar(value=True)
+            ttk.Checkbutton(dlg, text="Forçar troca no próximo login",
+                            variable=force_var).pack(padx=20, anchor="w")
+            tk.Label(dlg, text="A senha deve ter ≥8 caracteres, maiúscula, minúscula, número e símbolo.",
+                     bg=c["card"], fg=c["muted"], font=("Segoe UI", 8), wraplength=320).pack(padx=20, pady=(4, 8))
+
+            def _ok():
+                pw = pw_var.get()
+                if len(pw) < 8:
+                    messagebox.showwarning("Senha", "A senha precisa ter ao menos 8 caracteres.", parent=dlg)
+                    return
+                dlg.destroy()
+                def _do():
+                    try:
+                        self._ms_reset_password(u["id"], pw, force_var.get())
+                        self.root.after(0, lambda: messagebox.showinfo("Microsoft",
+                            f"Senha de {nm} redefinida com sucesso."))
+                    except Exception as ex:
+                        self.root.after(0, lambda: messagebox.showerror("Erro", str(ex)))
+                _thr.Thread(target=_do, daemon=True).start()
+
+            btn_f = ttk.Frame(dlg)
+            btn_f.pack(pady=(0, 16))
+            ttk.Button(btn_f, text="Confirmar", style="Accent.TButton", command=_ok).pack(side="left", padx=4)
+            ttk.Button(btn_f, text="Cancelar", command=dlg.destroy).pack(side="left", padx=4)
+
+        ttk.Button(act_row, text="🔒  Bloquear / Desbloquear",
+                   command=_bloquear).pack(side="left", padx=(0, 8))
+        ttk.Button(act_row, text="🔑  Redefinir Senha",
+                   command=_resetar_senha).pack(side="left", padx=(0, 8))
+        ttk.Button(act_row, text="🔄  Atualizar lista",
+                   command=lambda: _thr.Thread(target=lambda: (
+                       setattr(self, "_ms_users", self._ms_list_users()),
+                       self.root.after(0, _refresh_tree)
+                   ) if self._ms_token else None, daemon=True).start()).pack(side="left")
 
     def _mk_log(self, msg: str, level: str = "info"):
         """Escreve no log da aba Makrolock. level: 'info' | 'ok' | 'warn' | 'error'"""
