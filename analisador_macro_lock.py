@@ -2058,6 +2058,12 @@ class MacroLockAnalyzerApp:
         url = f"https://login.microsoftonline.com/{tid}/oauth2/v2.0/token"
         resp = _req.post(url, data={"grant_type": "client_credentials", "client_id": cid,
                                     "client_secret": sec, "scope": "https://graph.microsoft.com/.default"}, timeout=15)
+        if not resp.ok:
+            try:
+                err = resp.json().get("error_description") or resp.json().get("error") or resp.text
+            except Exception:
+                err = resp.text
+            raise ValueError(f"HTTP {resp.status_code}: {err}")
         resp.raise_for_status()
         j = resp.json()
         self._ms_token = j["access_token"]
@@ -2152,8 +2158,9 @@ class MacroLockAnalyzerApp:
                         text=f"● Conectado — {len(users)} usuário(s)", fg="#6EE7B7"))
                     self.root.after(0, _refresh_tree)
                 except Exception as ex:
-                    self.root.after(0, lambda: self._ms_status_lbl.configure(
-                        text=f"● Erro: {ex}", fg="#FCA5A5"))
+                    _msg = str(ex) or repr(ex)
+                    self.root.after(0, lambda m=_msg: self._ms_status_lbl.configure(
+                        text=f"● Erro: {m}", fg="#FCA5A5"))
             _thr.Thread(target=_do, daemon=True).start()
 
         ttk.Button(btn_row, text="🔗  Conectar", style="Accent.TButton", command=_connect).pack(side="left")
