@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "Umbrela Analytics"
-APP_VERSION = "8.56"
+APP_VERSION = "8.57"
 GITHUB_REPO = "jsilvacps/umbrela-analytics"   # repositório público de releases
 DEFAULT_EXCLUDE = "OFFLINE, [LOCK.OFFLINE], [LOCK.LOGIN], LOGIN, LOGOUT"
 LOGO_FILE = "logo_umbrela_analytics.png"
