@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "Umbrela Analytics"
-APP_VERSION = "8.59"
+APP_VERSION = "8.60"
 GITHUB_REPO = "jsilvacps/umbrela-analytics"   # repositório público de releases
 DEFAULT_EXCLUDE = "OFFLINE, [LOCK.OFFLINE], [LOCK.LOGIN], LOGIN, LOGOUT"
 LOGO_FILE = "logo_umbrela_analytics.png"
@@ -3868,7 +3868,7 @@ class MacroLockAnalyzerApp:
         # Barra de busca
         search_row = tk.Frame(tbl_card, bg=c["card"])
         search_row.pack(fill="x", pady=(0, 6))
-        tk.Label(search_row, text="Buscar:", bg=c["card"], fg=c["label"],
+        tk.Label(search_row, text="Buscar:", bg=c["card"], fg=c["muted"],
                  font=("Segoe UI", 9)).pack(side="left", padx=(0, 6))
         _search_var = tk.StringVar()
         ttk.Entry(search_row, textvariable=_search_var, font=("Segoe UI", 9), width=30).pack(side="left")
