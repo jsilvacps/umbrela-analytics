@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "Umbrela Analytics"
-APP_VERSION = "8.60"
+APP_VERSION = "8.61"
 GITHUB_REPO = "jsilvacps/umbrela-analytics"   # repositório público de releases
 DEFAULT_EXCLUDE = "OFFLINE, [LOCK.OFFLINE], [LOCK.LOGIN], LOGIN, LOGOUT"
 LOGO_FILE = "logo_umbrela_analytics.png"
@@ -760,7 +760,7 @@ class MacroLockAnalyzerApp:
             ("inicio",      "⌂", "Início",      False),
             ("makrolock",   "⬡", "Makrolock",   True),
             ("microsoft",   "🪟", "Microsoft",   True),
-            ("onvio",       "O", "Onvio",        False),
+            ("onvio",       "O", "Onvio",        True),
             ("processar",   "⚙", "Processar",   False),
             ("relatorios",  "≡", "Relatórios",  False),
         ]
@@ -3736,10 +3736,10 @@ class MacroLockAnalyzerApp:
 
         _cfg = _load_cfg()
 
-        _onvio_base      = tk.StringVar(value=_cfg.get("base_url",   "https://onvio.com.br"))
+        _onvio_base      = tk.StringVar(value="https://onvio.com.br")
         _onvio_user      = tk.StringVar(value=_cfg.get("username",   ""))
         _onvio_pass      = tk.StringVar(value=_cfg.get("password",   ""))
-        _onvio_company   = tk.StringVar(value=_cfg.get("company_id", ""))
+        _onvio_company   = tk.StringVar(value="A40DB26F86124148BE1727C6EA264ABF")
         _onvio_save_pass = tk.BooleanVar(value=bool(_cfg.get("save_pass", False)))
         _onvio_token_cache = [""]   # [token_string]
         _onvio_employees: list = []
@@ -3808,10 +3808,8 @@ class MacroLockAnalyzerApp:
             e.grid(row=row, column=1, sticky="ew", pady=3)
             return e
 
-        _lbl_entry(0, "URL base:",   _onvio_base)
-        _lbl_entry(1, "Usuário:",    _onvio_user)
-        _pw_entry = _lbl_entry(2, "Senha:",      _onvio_pass, show="*")
-        _lbl_entry(3, "Company ID:", _onvio_company)
+        _lbl_entry(0, "Usuário:", _onvio_user)
+        _pw_entry = _lbl_entry(1, "Senha:",   _onvio_pass, show="*")
 
         save_row = tk.Frame(cfg_card, bg=c["card"])
         save_row.pack(fill="x", pady=(0, 4))
@@ -3830,8 +3828,8 @@ class MacroLockAnalyzerApp:
             company = _onvio_company.get().strip()
             usr     = _onvio_user.get().strip()
             pwd     = _onvio_pass.get()
-            if not (base and usr and pwd and company):
-                messagebox.showwarning("Onvio", "Preencha todos os campos.")
+            if not (base and usr and pwd):
+                messagebox.showwarning("Onvio", "Preencha usuário e senha.")
                 return
             _save_cfg()
             _onvio_token_cache[0] = ""  # força novo login
@@ -3950,22 +3948,20 @@ class MacroLockAnalyzerApp:
                     page, all_emps = 1, []
                     while True:
                         data = _api_request(
-                            "POST",
-                            f"/api/core/v2/companies/{company}/employee-views/search",
-                            json={"itemsPerPage": 100, "pageIndex": page,
-                                  "orderBy": "name asc",
-                                  "expand": "code,name,primaryContact.id"}
+                            "GET",
+                            f"/api/security/v1/companies/{company}/contacts",
+                            params={"itemsPerPage": 100, "pageIndex": page}
                         )
                         items = data.get("items", [])
                         all_emps.extend(items)
-                        if len(all_emps) >= data.get("totalItems", 0):
+                        if not items or len(all_emps) >= data.get("totalItems", 0):
                             break
                         page += 1
 
                     # Para cada funcionário busca status de acesso
                     result = []
                     for emp in all_emps:
-                        contact_id = (emp.get("primaryContact") or {}).get("id", "")
+                        contact_id = emp.get("id", "")
                         if not contact_id:
                             continue
                         try:
