@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "Umbrela Analytics"
-APP_VERSION = "8.55"
+APP_VERSION = "8.56"
 GITHUB_REPO = "jsilvacps/umbrela-analytics"   # repositório público de releases
 DEFAULT_EXCLUDE = "OFFLINE, [LOCK.OFFLINE], [LOCK.LOGIN], LOGIN, LOGOUT"
 LOGO_FILE = "logo_umbrela_analytics.png"
@@ -748,6 +748,7 @@ class MacroLockAnalyzerApp:
             ("inicio",      "⌂", "Início",      False),
             ("makrolock",   "⬡", "Makrolock",   True),
             ("microsoft",   "🪟", "Microsoft",   True),
+            ("onvio",       "O", "Onvio",        False),
             ("processar",   "⚙", "Processar",   False),
             ("relatorios",  "≡", "Relatórios",  False),
         ]
@@ -759,6 +760,7 @@ class MacroLockAnalyzerApp:
             "inicio":     ("Início",     "Umbrela Analytics"),
             "makrolock":  ("Makrolock",  "Monitoramento de acessos"),
             "microsoft":  ("Microsoft",  "Gestão de usuários Microsoft 365"),
+            "onvio":      ("Onvio",      "Gestão de acesso dos funcionários"),
             "processar":  ("Processar",  "Importar e tratar dados"),
             "relatorios": ("Relatórios", "Análise e exportação"),
         }
@@ -883,12 +885,14 @@ class MacroLockAnalyzerApp:
         tab_inicio    = self._pages["inicio"]
         tab_makrolock = self._pages["makrolock"]
         tab_microsoft = self._pages["microsoft"]
+        tab_onvio     = self._pages["onvio"]
         tab_process   = self._pages["processar"]
         tab_reports   = self._pages["relatorios"]
 
         self._build_inicio_tab(tab_inicio)
         self._build_makrolock_tab(tab_makrolock)
         self._build_microsoft_tab(tab_microsoft)
+        self._build_onvio_tab(tab_onvio)
         self._build_process_tab(tab_process)
         self._build_reports_tab(tab_reports)
 
@@ -3685,6 +3689,299 @@ class MacroLockAnalyzerApp:
                                 self._mk_cls_btn_auto):
                         btn.configure(state="normal")
                 self.root.after(0, _re_enable)
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # ABA ONVIO
+    # ──────────────────────────────────────────────────────────────────────────
+    def _build_onvio_tab(self, parent):
+        import threading as _thr
+        c = self.COLORS
+
+        # ── Config file ──────────────────────────────────────────────────────
+        _onvio_cfg_file = Path(sys.executable).resolve().parent / "onvio_config.json" \
+            if getattr(sys, "frozen", False) else Path(__file__).parent / "onvio_config.json"
+
+        def _load_cfg():
+            import json
+            try:
+                return json.loads(_onvio_cfg_file.read_text(encoding="utf-8"))
+            except Exception:
+                return {}
+
+        def _save_cfg():
+            import json
+            data = {
+                "base_url":   _onvio_base.get().strip(),
+                "token":      _onvio_token.get().strip(),
+                "company_id": _onvio_company.get().strip(),
+            }
+            try:
+                _onvio_cfg_file.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+            except Exception:
+                pass
+
+        _cfg = _load_cfg()
+
+        _onvio_base    = tk.StringVar(value=_cfg.get("base_url",   "https://onvio.com.br"))
+        _onvio_token   = tk.StringVar(value=_cfg.get("token",      ""))
+        _onvio_company = tk.StringVar(value=_cfg.get("company_id", ""))
+        _onvio_employees: list = []
+
+        # ── Status label ─────────────────────────────────────────────────────
+        self._onvio_status_lbl = None
+
+        # ── Scroll layout ────────────────────────────────────────────────────
+        scroll_outer = tk.Frame(parent, bg=c["bg"])
+        scroll_outer.pack(fill="both", expand=True)
+        canvas = tk.Canvas(scroll_outer, bg=c["bg"], highlightthickness=0)
+        scrollbar = ttk.Scrollbar(scroll_outer, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        inner = tk.Frame(canvas, bg=c["bg"])
+        win_id = canvas.create_window((0, 0), window=inner, anchor="nw")
+        inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig(win_id, width=e.width))
+        canvas.bind("<MouseWheel>", lambda e: canvas.yview_scroll(-1 * (e.delta // 120), "units"))
+
+        # ── Card configuração ────────────────────────────────────────────────
+        outer_cfg, cfg_card = self._card(inner, accent=True)
+        outer_cfg.pack(fill="x", pady=(0, 12))
+        self._section_label(cfg_card, "CONFIGURAÇÃO — ONVIO")
+
+        cfg_grid = ttk.Frame(cfg_card, style="Card.TFrame")
+        cfg_grid.pack(fill="x", pady=(0, 8))
+        cfg_grid.columnconfigure(1, weight=1)
+
+        def _lbl_entry(row, text, var, show=""):
+            tk.Label(cfg_grid, text=text, bg=c["card"], fg=c["label"],
+                     font=("Segoe UI", 9), anchor="w").grid(row=row, column=0, sticky="w", pady=3, padx=(0, 10))
+            e = ttk.Entry(cfg_grid, textvariable=var, show=show, font=("Segoe UI", 9))
+            e.grid(row=row, column=1, sticky="ew", pady=3)
+            return e
+
+        _lbl_entry(0, "URL base:",      _onvio_base)
+        _lbl_entry(1, "UDS Token:",     _onvio_token, show="*")
+        _lbl_entry(2, "Company ID:",    _onvio_company)
+
+        btn_row_cfg = tk.Frame(cfg_card, bg=c["card"])
+        btn_row_cfg.pack(fill="x", pady=(4, 0))
+
+        _btn_cfg = {"bg": "#1E3A5F", "fg": "white", "activebackground": "#2E5A8F",
+                    "activeforeground": "white", "relief": "flat", "cursor": "hand2",
+                    "font": ("Segoe UI", 9), "padx": 10, "pady": 4}
+
+        def _connect_onvio():
+            base   = _onvio_base.get().strip()
+            token  = _onvio_token.get().strip()
+            company = _onvio_company.get().strip()
+            if not (base and token and company):
+                messagebox.showwarning("Onvio", "Preencha URL base, Token e Company ID.")
+                return
+            _save_cfg()
+            self._onvio_status_lbl.configure(text="● Conectando...", fg="#FDE68A")
+            def _do():
+                try:
+                    import requests as _req
+                    r = _req.get(
+                        f"{base}/api/core/v2/companies/{company}/employee-views/search",
+                        headers={"Authorization": f"UDSLongToken {token}", "Content-Type": "application/json"},
+                        json={"itemsPerPage": 1, "pageIndex": 1},
+                        timeout=15
+                    )
+                    r.raise_for_status()
+                    self.root.after(0, lambda: (
+                        self._onvio_status_lbl.configure(text="● Conectado", fg="#34D399"),
+                        _load_employees()
+                    ))
+                except Exception as ex:
+                    _msg = str(ex) or repr(ex)
+                    self.root.after(0, lambda m=_msg: (
+                        self._onvio_status_lbl.configure(text="● Erro", fg="#F87171"),
+                        messagebox.showerror("Erro — Onvio", m)
+                    ))
+            _thr.Thread(target=_do, daemon=True).start()
+
+        tk.Button(btn_row_cfg, text="Conectar", command=_connect_onvio, **_btn_cfg).pack(side="left", padx=(0, 8))
+
+        self._onvio_status_lbl = tk.Label(btn_row_cfg, text="● Não conectado",
+                                          bg=c["card"], fg="#FDE68A",
+                                          font=("Segoe UI", 9))
+        self._onvio_status_lbl.pack(side="left")
+
+        # ── Card tabela de funcionários ──────────────────────────────────────
+        outer_tbl, tbl_card = self._card(inner)
+        outer_tbl.pack(fill="both", expand=True, pady=(0, 12))
+        self._section_label(tbl_card, "FUNCIONÁRIOS — ACESSO ONVIO STAFF")
+
+        # Barra de busca
+        search_row = tk.Frame(tbl_card, bg=c["card"])
+        search_row.pack(fill="x", pady=(0, 6))
+        tk.Label(search_row, text="Buscar:", bg=c["card"], fg=c["label"],
+                 font=("Segoe UI", 9)).pack(side="left", padx=(0, 6))
+        _search_var = tk.StringVar()
+        ttk.Entry(search_row, textvariable=_search_var, font=("Segoe UI", 9), width=30).pack(side="left")
+
+        # Botões de ação (antes da tabela para ficarem visíveis)
+        act_row = tk.Frame(tbl_card, bg=c["card"])
+        act_row.pack(fill="x", pady=(4, 6))
+
+        # Tabela
+        tree_frame = tk.Frame(tbl_card, bg=c["card"])
+
+        cols = ("nome", "codigo", "acesso")
+        self._onvio_tree = ttk.Treeview(tree_frame, columns=cols, show="headings", height=14)
+        self._onvio_tree.heading("nome",   text="Nome")
+        self._onvio_tree.heading("codigo", text="Código")
+        self._onvio_tree.heading("acesso", text="Acesso Staff")
+        self._onvio_tree.column("nome",   width=260, minwidth=180)
+        self._onvio_tree.column("codigo", width=100, minwidth=60)
+        self._onvio_tree.column("acesso", width=120, minwidth=80, anchor="center")
+
+        vsb = ttk.Scrollbar(tree_frame, orient="vertical",   command=self._onvio_tree.yview)
+        hsb = ttk.Scrollbar(tree_frame, orient="horizontal", command=self._onvio_tree.xview)
+        self._onvio_tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+        vsb.pack(side="right", fill="y")
+        self._onvio_tree.pack(side="left", fill="both", expand=True)
+
+        tree_frame.pack(fill="both", expand=True)
+
+        # Tags de cor
+        self._onvio_tree.tag_configure("ativo",    foreground="#34D399")
+        self._onvio_tree.tag_configure("inativo",  foreground="#F87171")
+
+        def _populate_tree(employees=None):
+            term = _search_var.get().strip().lower()
+            source = employees if employees is not None else _onvio_employees
+            self._onvio_tree.delete(*self._onvio_tree.get_children())
+            for emp in source:
+                nome = emp.get("nome", "")
+                codigo = emp.get("codigo", "")
+                acesso = emp.get("acesso", False)
+                if term and term not in nome.lower() and term not in codigo.lower():
+                    continue
+                tag = "ativo" if acesso else "inativo"
+                label = "✓ Ativo" if acesso else "✗ Inativo"
+                self._onvio_tree.insert("", "end", iid=emp.get("contact_id", ""),
+                                        values=(nome, codigo, label), tags=(tag,))
+
+        _search_var.trace_add("write", lambda *_: _populate_tree())
+
+        def _load_employees():
+            base    = _onvio_base.get().strip()
+            token   = _onvio_token.get().strip()
+            company = _onvio_company.get().strip()
+            self._onvio_status_lbl.configure(text="● Carregando...", fg="#FDE68A")
+            def _do():
+                import requests as _req
+                try:
+                    headers = {"Authorization": f"UDSLongToken {token}",
+                               "Content-Type": "application/json"}
+                    # Busca lista de funcionários
+                    page, all_emps = 1, []
+                    while True:
+                        r = _req.post(
+                            f"{base}/api/core/v2/companies/{company}/employee-views/search",
+                            headers=headers,
+                            json={"itemsPerPage": 100, "pageIndex": page,
+                                  "orderBy": "name asc",
+                                  "expand": "code,name,primaryContact.id"},
+                            timeout=20
+                        )
+                        r.raise_for_status()
+                        data = r.json()
+                        items = data.get("items", [])
+                        all_emps.extend(items)
+                        if len(all_emps) >= data.get("totalItems", 0):
+                            break
+                        page += 1
+
+                    # Para cada funcionário, busca status de acesso
+                    result = []
+                    for emp in all_emps:
+                        contact_id = (emp.get("primaryContact") or {}).get("id", "")
+                        if not contact_id:
+                            continue
+                        try:
+                            rs = _req.get(
+                                f"{base}/api/security/v1/companies/{company}/contacts/{contact_id}/staff/access",
+                                headers=headers, timeout=10
+                            )
+                            acesso = rs.ok and rs.json().get("permission", "") not in ("Not Granted", "")
+                        except Exception:
+                            acesso = False
+                        result.append({
+                            "nome":       emp.get("name", ""),
+                            "codigo":     emp.get("code", ""),
+                            "contact_id": contact_id,
+                            "acesso":     acesso,
+                        })
+
+                    _onvio_employees.clear()
+                    _onvio_employees.extend(result)
+                    self.root.after(0, lambda: (
+                        _populate_tree(),
+                        self._onvio_status_lbl.configure(
+                            text=f"● Conectado — {len(result)} funcionários", fg="#34D399")
+                    ))
+                except Exception as ex:
+                    _msg = str(ex) or repr(ex)
+                    self.root.after(0, lambda m=_msg: (
+                        self._onvio_status_lbl.configure(text="● Erro", fg="#F87171"),
+                        messagebox.showerror("Erro — Onvio", m)
+                    ))
+            _thr.Thread(target=_do, daemon=True).start()
+
+        def _toggle_acesso():
+            sel = self._onvio_tree.selection()
+            if not sel:
+                messagebox.showwarning("Onvio", "Selecione um funcionário na tabela.")
+                return
+            contact_id = sel[0]
+            emp = next((e for e in _onvio_employees if e["contact_id"] == contact_id), None)
+            if not emp:
+                return
+            novo_acesso = not emp["acesso"]
+            acao = "ativar" if novo_acesso else "desativar"
+            if not messagebox.askyesno("Confirmar",
+                    f"{acao.capitalize()} acesso Onvio Staff para {emp['nome']}?"):
+                return
+            base    = _onvio_base.get().strip()
+            token   = _onvio_token.get().strip()
+            company = _onvio_company.get().strip()
+            def _do():
+                import requests as _req
+                try:
+                    headers = {"Authorization": f"UDSLongToken {token}",
+                               "Content-Type": "application/json"}
+                    r = _req.put(
+                        f"{base}/api/core/v7/companies/{company}/contacts/{contact_id}",
+                        headers=headers,
+                        json={"isStaffCenterEnabled": novo_acesso},
+                        timeout=15
+                    )
+                    r.raise_for_status()
+                    emp["acesso"] = novo_acesso
+                    self.root.after(0, lambda: (
+                        _populate_tree(),
+                        messagebox.showinfo("Onvio",
+                            f"Acesso {'ativado' if novo_acesso else 'desativado'} para {emp['nome']}.")
+                    ))
+                except Exception as ex:
+                    _msg = str(ex) or repr(ex)
+                    self.root.after(0, lambda m=_msg: messagebox.showerror("Erro — Onvio", m))
+            _thr.Thread(target=_do, daemon=True).start()
+
+        def _atualizar():
+            if not _onvio_token.get().strip():
+                messagebox.showwarning("Onvio", "Configure e conecte primeiro.")
+                return
+            _load_employees()
+
+        tk.Button(act_row, text="Atualizar", command=_atualizar, **_btn_cfg).pack(side="left", padx=(0, 6))
+        tk.Button(act_row, text="Ativar / Desativar Acesso", command=_toggle_acesso, **_btn_cfg).pack(side="left", padx=(0, 6))
+
+    # ──────────────────────────────────────────────────────────────────────────
 
     def _build_process_tab(self, parent):
         c = self.COLORS
