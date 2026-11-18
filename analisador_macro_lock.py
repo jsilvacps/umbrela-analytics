@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "Umbrela Analytics"
-APP_VERSION = "8.34"
+APP_VERSION = "8.55"
 GITHUB_REPO = "jsilvacps/umbrela-analytics"   # repositório público de releases
 DEFAULT_EXCLUDE = "OFFLINE, [LOCK.OFFLINE], [LOCK.LOGIN], LOGIN, LOGOUT"
 LOGO_FILE = "logo_umbrela_analytics.png"
@@ -260,7 +260,7 @@ class MacroLockAnalyzerApp:
     # ══════════════════════════════════════════════════════════════════════
     #  AUTO-UPDATE — verifica última release no GitHub
     # ══════════════════════════════════════════════════════════════════════
-    def _check_update(self):
+    def _check_update(self, manual: bool = False):
         """Consulta GitHub Releases e oferece atualização se houver versão nova."""
         try:
             import urllib.request, json as _json, tempfile, shutil
@@ -279,6 +279,10 @@ class MacroLockAnalyzerApp:
                 except Exception: return (0,)
 
             if _ver(tag) <= _ver(APP_VERSION):
+                if manual:
+                    self.root.after(0, lambda: messagebox.showinfo(
+                        "Verificar atualização",
+                        f"Você já está na versão mais recente (v{APP_VERSION})."))
                 return  # já está atualizado
 
             # Localiza o .exe nos assets
@@ -710,6 +714,20 @@ class MacroLockAnalyzerApp:
         tk.Label(inner_status, textvariable=self.status_text,
                  bg=c["sidebar"], fg=c["muted"],
                  font=("Segoe UI", 9)).pack(side="left", padx=(12, 0))
+
+        def _manual_check_update():
+            btn_upd.configure(text="Verificando...", state="disabled")
+            def _do():
+                self._check_update(manual=True)
+                self.root.after(0, lambda: btn_upd.configure(text="Verificar atualização", state="normal"))
+            threading.Thread(target=_do, daemon=True).start()
+
+        btn_upd = tk.Button(inner_status, text="Verificar atualização",
+                            bg="#1E3A5F", fg="white", activebackground="#2E5A8F",
+                            activeforeground="white", relief="flat", cursor="hand2",
+                            font=("Segoe UI", 8), padx=8, pady=2,
+                            command=_manual_check_update)
+        btn_upd.pack(side="right")
 
         # Log oculto — mantido para write_log(), sem exibir na UI
         self.log = tk.Text(bottom, height=1, state="normal",
