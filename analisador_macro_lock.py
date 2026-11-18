@@ -210,6 +210,8 @@ class MacroLockAnalyzerApp:
         self._ms_tenant_id     = tk.StringVar(value=_ms_cfg.get("tenant_id", ""))
         self._ms_client_id     = tk.StringVar(value=_ms_cfg.get("client_id", ""))
         self._ms_client_secret = tk.StringVar(value=_ms_cfg.get("client_secret", ""))
+        self._ms_email    = tk.StringVar(value=_ms_cfg.get("email", ""))
+        self._ms_password = tk.StringVar(value="")
         self._ms_token: str = ""
         self._ms_token_exp: float = 0.0
         self._ms_users: list = []
@@ -2040,7 +2042,7 @@ class MacroLockAnalyzerApp:
         import json
         data = {"tenant_id": self._ms_tenant_id.get().strip(),
                 "client_id": self._ms_client_id.get().strip(),
-                "client_secret": self._ms_client_secret.get().strip()}
+                "email": self._ms_email.get().strip()}
         try:
             self._ms_config_file.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
         except Exception:
@@ -2052,19 +2054,24 @@ class MacroLockAnalyzerApp:
             return self._ms_token
         tid = self._ms_tenant_id.get().strip()
         cid = self._ms_client_id.get().strip()
-        sec = self._ms_client_secret.get().strip()
-        if not (tid and cid and sec):
-            raise ValueError("Configure Tenant ID, Client ID e Client Secret primeiro.")
+        usr = self._ms_email.get().strip()
+        pwd = self._ms_password.get()
+        if not (tid and cid and usr and pwd):
+            raise ValueError("Preencha Tenant ID, Client ID, E-mail e Senha.")
         url = f"https://login.microsoftonline.com/{tid}/oauth2/v2.0/token"
-        resp = _req.post(url, data={"grant_type": "client_credentials", "client_id": cid,
-                                    "client_secret": sec, "scope": "https://graph.microsoft.com/.default"}, timeout=15)
+        resp = _req.post(url, data={
+            "grant_type": "password",
+            "client_id": cid,
+            "username": usr,
+            "password": pwd,
+            "scope": "https://graph.microsoft.com/User.ReadWrite.All https://graph.microsoft.com/Directory.ReadWrite.All offline_access",
+        }, timeout=15)
         if not resp.ok:
             try:
                 err = resp.json().get("error_description") or resp.json().get("error") or resp.text
             except Exception:
                 err = resp.text
             raise ValueError(f"HTTP {resp.status_code}: {err}")
-        resp.raise_for_status()
         j = resp.json()
         self._ms_token = j["access_token"]
         self._ms_token_exp = time.time() + j.get("expires_in", 3600)
@@ -2129,9 +2136,10 @@ class MacroLockAnalyzerApp:
         cfg_grid.columnconfigure(1, weight=1)
 
         for row, (lbl, var, show) in enumerate([
-            ("Tenant ID",     self._ms_tenant_id,     True),
-            ("Client ID",     self._ms_client_id,     True),
-            ("Client Secret", self._ms_client_secret, False),
+            ("Tenant ID", self._ms_tenant_id,  True),
+            ("Client ID", self._ms_client_id,  True),
+            ("E-mail",    self._ms_email,       True),
+            ("Senha",     self._ms_password,    False),
         ]):
             tk.Label(cfg_grid, text=lbl, bg=c["card"], fg=c["muted"],
                      font=("Segoe UI", 9)).grid(row=row, column=0, sticky="w", padx=(0, 12), pady=3)
