@@ -3712,8 +3712,10 @@ class MacroLockAnalyzerApp:
             import json
             data = {
                 "base_url":   _onvio_base.get().strip(),
-                "token":      _onvio_token.get().strip(),
+                "username":   _onvio_user.get().strip(),
+                "password":   _onvio_pass.get() if _onvio_save_pass.get() else "",
                 "company_id": _onvio_company.get().strip(),
+                "save_pass":  _onvio_save_pass.get(),
             }
             try:
                 _onvio_cfg_file.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
@@ -3722,10 +3724,44 @@ class MacroLockAnalyzerApp:
 
         _cfg = _load_cfg()
 
-        _onvio_base    = tk.StringVar(value=_cfg.get("base_url",   "https://onvio.com.br"))
-        _onvio_token   = tk.StringVar(value=_cfg.get("token",      ""))
-        _onvio_company = tk.StringVar(value=_cfg.get("company_id", ""))
+        _onvio_base      = tk.StringVar(value=_cfg.get("base_url",   "https://onvio.com.br"))
+        _onvio_user      = tk.StringVar(value=_cfg.get("username",   ""))
+        _onvio_pass      = tk.StringVar(value=_cfg.get("password",   ""))
+        _onvio_company   = tk.StringVar(value=_cfg.get("company_id", ""))
+        _onvio_save_pass = tk.BooleanVar(value=bool(_cfg.get("save_pass", False)))
+        _onvio_token_cache = [""]   # [token_string]
         _onvio_employees: list = []
+
+        def _onvio_get_token() -> str:
+            """Login no Onvio e retorna o LongToken (UDS token)."""
+            import requests as _req
+            base = _onvio_base.get().strip()
+            usr  = _onvio_user.get().strip()
+            pwd  = _onvio_pass.get()
+            if not (base and usr and pwd):
+                raise ValueError("Preencha usuário e senha do Onvio.")
+            r = _req.post(
+                f"{base}/api/security/v1/sessions",
+                json={"username": usr, "password": pwd},
+                headers={"Content-Type": "application/json", "Accept": "application/json"},
+                timeout=15
+            )
+            if not r.ok:
+                try:
+                    err = r.json().get("Message", [r.text])[0]
+                except Exception:
+                    err = r.text
+                raise ValueError(f"Login Onvio falhou ({r.status_code}): {err}")
+            token = r.json().get("LongToken", "")
+            if not token:
+                raise ValueError("Login Onvio: LongToken não retornado.")
+            _onvio_token_cache[0] = token
+            return token
+
+        def _onvio_headers() -> dict:
+            token = _onvio_token_cache[0] or _onvio_get_token()
+            return {"Authorization": f"UDSLongToken {token}",
+                    "Content-Type": "application/json", "Accept": "application/json"}
 
         # ── Status label ─────────────────────────────────────────────────────
         self._onvio_status_lbl = None
@@ -3760,9 +3796,15 @@ class MacroLockAnalyzerApp:
             e.grid(row=row, column=1, sticky="ew", pady=3)
             return e
 
-        _lbl_entry(0, "URL base:",      _onvio_base)
-        _lbl_entry(1, "UDS Token:",     _onvio_token, show="*")
-        _lbl_entry(2, "Company ID:",    _onvio_company)
+        _lbl_entry(0, "URL base:",   _onvio_base)
+        _lbl_entry(1, "Usuário:",    _onvio_user)
+        _pw_entry = _lbl_entry(2, "Senha:",      _onvio_pass, show="*")
+        _lbl_entry(3, "Company ID:", _onvio_company)
+
+        save_row = tk.Frame(cfg_card, bg=c["card"])
+        save_row.pack(fill="x", pady=(0, 4))
+        ttk.Checkbutton(save_row, text="Salvar senha", variable=_onvio_save_pass,
+                        style="TCheckbutton").pack(side="left")
 
         btn_row_cfg = tk.Frame(cfg_card, bg=c["card"])
         btn_row_cfg.pack(fill="x", pady=(4, 0))
@@ -3772,24 +3814,19 @@ class MacroLockAnalyzerApp:
                     "font": ("Segoe UI", 9), "padx": 10, "pady": 4}
 
         def _connect_onvio():
-            base   = _onvio_base.get().strip()
-            token  = _onvio_token.get().strip()
+            base    = _onvio_base.get().strip()
             company = _onvio_company.get().strip()
-            if not (base and token and company):
-                messagebox.showwarning("Onvio", "Preencha URL base, Token e Company ID.")
+            usr     = _onvio_user.get().strip()
+            pwd     = _onvio_pass.get()
+            if not (base and usr and pwd and company):
+                messagebox.showwarning("Onvio", "Preencha todos os campos.")
                 return
             _save_cfg()
+            _onvio_token_cache[0] = ""  # força novo login
             self._onvio_status_lbl.configure(text="● Conectando...", fg="#FDE68A")
             def _do():
                 try:
-                    import requests as _req
-                    r = _req.get(
-                        f"{base}/api/core/v2/companies/{company}/employee-views/search",
-                        headers={"Authorization": f"UDSLongToken {token}", "Content-Type": "application/json"},
-                        json={"itemsPerPage": 1, "pageIndex": 1},
-                        timeout=15
-                    )
-                    r.raise_for_status()
+                    _onvio_get_token()
                     self.root.after(0, lambda: (
                         self._onvio_status_lbl.configure(text="● Conectado", fg="#34D399"),
                         _load_employees()
@@ -3801,6 +3838,8 @@ class MacroLockAnalyzerApp:
                         messagebox.showerror("Erro — Onvio", m)
                     ))
             _thr.Thread(target=_do, daemon=True).start()
+
+        _pw_entry.bind("<Return>", lambda e: _connect_onvio())
 
         tk.Button(btn_row_cfg, text="Conectar", command=_connect_onvio, **_btn_cfg).pack(side="left", padx=(0, 8))
 
@@ -3867,47 +3906,62 @@ class MacroLockAnalyzerApp:
 
         _search_var.trace_add("write", lambda *_: _populate_tree())
 
-        def _load_employees():
+        def _api_request(method, path, **kwargs):
+            """Chama a API Onvio com auto-refresh de token em caso de 401."""
+            import requests as _req
             base    = _onvio_base.get().strip()
-            token   = _onvio_token.get().strip()
+            company = _onvio_company.get().strip()
+            url = f"{base}{path.format(company=company)}"
+            for attempt in range(2):
+                try:
+                    h = _onvio_headers()
+                    r = _req.request(method, url, headers=h, timeout=20, **kwargs)
+                    if r.status_code == 401 and attempt == 0:
+                        _onvio_token_cache[0] = ""  # força re-login
+                        continue
+                    r.raise_for_status()
+                    return r.json() if r.content else {}
+                except Exception:
+                    if attempt == 0 and _onvio_token_cache[0]:
+                        _onvio_token_cache[0] = ""
+                        continue
+                    raise
+
+        def _load_employees():
             company = _onvio_company.get().strip()
             self._onvio_status_lbl.configure(text="● Carregando...", fg="#FDE68A")
             def _do():
                 import requests as _req
                 try:
-                    headers = {"Authorization": f"UDSLongToken {token}",
-                               "Content-Type": "application/json"}
-                    # Busca lista de funcionários
+                    base = _onvio_base.get().strip()
+                    # Busca lista de funcionários (paginado)
                     page, all_emps = 1, []
                     while True:
-                        r = _req.post(
-                            f"{base}/api/core/v2/companies/{company}/employee-views/search",
-                            headers=headers,
+                        data = _api_request(
+                            "POST",
+                            f"/api/core/v2/companies/{company}/employee-views/search",
                             json={"itemsPerPage": 100, "pageIndex": page,
                                   "orderBy": "name asc",
-                                  "expand": "code,name,primaryContact.id"},
-                            timeout=20
+                                  "expand": "code,name,primaryContact.id"}
                         )
-                        r.raise_for_status()
-                        data = r.json()
                         items = data.get("items", [])
                         all_emps.extend(items)
                         if len(all_emps) >= data.get("totalItems", 0):
                             break
                         page += 1
 
-                    # Para cada funcionário, busca status de acesso
+                    # Para cada funcionário busca status de acesso
                     result = []
                     for emp in all_emps:
                         contact_id = (emp.get("primaryContact") or {}).get("id", "")
                         if not contact_id:
                             continue
                         try:
-                            rs = _req.get(
-                                f"{base}/api/security/v1/companies/{company}/contacts/{contact_id}/staff/access",
-                                headers=headers, timeout=10
+                            rs = _api_request(
+                                "GET",
+                                f"/api/security/v1/companies/{company}/contacts/{contact_id}/staff/access"
                             )
-                            acesso = rs.ok and rs.json().get("permission", "") not in ("Not Granted", "")
+                            acesso = rs.get("permission", "") not in ("Not Granted", "")
                         except Exception:
                             acesso = False
                         result.append({
@@ -3946,21 +4000,14 @@ class MacroLockAnalyzerApp:
             if not messagebox.askyesno("Confirmar",
                     f"{acao.capitalize()} acesso Onvio Staff para {emp['nome']}?"):
                 return
-            base    = _onvio_base.get().strip()
-            token   = _onvio_token.get().strip()
             company = _onvio_company.get().strip()
             def _do():
-                import requests as _req
                 try:
-                    headers = {"Authorization": f"UDSLongToken {token}",
-                               "Content-Type": "application/json"}
-                    r = _req.put(
-                        f"{base}/api/core/v7/companies/{company}/contacts/{contact_id}",
-                        headers=headers,
-                        json={"isStaffCenterEnabled": novo_acesso},
-                        timeout=15
+                    _api_request(
+                        "PUT",
+                        f"/api/core/v7/companies/{company}/contacts/{contact_id}",
+                        json={"isStaffCenterEnabled": novo_acesso}
                     )
-                    r.raise_for_status()
                     emp["acesso"] = novo_acesso
                     self.root.after(0, lambda: (
                         _populate_tree(),
