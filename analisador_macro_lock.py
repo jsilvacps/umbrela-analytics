@@ -2199,8 +2199,10 @@ class MacroLockAnalyzerApp:
                     self.root.after(0, _refresh_tree)
                 except Exception as ex:
                     _msg = str(ex) or repr(ex)
-                    self.root.after(0, lambda m=_msg: self._ms_status_lbl.configure(
-                        text=f"● Erro: {m}", fg="#FCA5A5"))
+                    self.root.after(0, lambda m=_msg: (
+                        self._ms_status_lbl.configure(text="● Não conectado", fg="#FDE68A"),
+                        messagebox.showerror("Erro — Microsoft 365", m)
+                    ))
             _thr.Thread(target=_do, daemon=True).start()
 
         ttk.Button(btn_row, text="🔗  Conectar", style="Accent.TButton", command=_connect).pack(side="left")
