@@ -2311,39 +2311,89 @@ class MacroLockAnalyzerApp:
         def _resetar_senha():
             u = _get_sel()
             if not u: return
-            nm = u.get("displayName", u.get("userPrincipalName", ""))
+            nm  = u.get("displayName", u.get("userPrincipalName", ""))
+            upn = u.get("userPrincipalName", "")
             dlg = tk.Toplevel(self.root)
             dlg.title("Redefinir senha")
             dlg.resizable(False, False)
             dlg.grab_set()
             dlg.configure(bg=c["card"])
-            tk.Label(dlg, text=f"Nova senha para: {nm}", bg=c["card"], fg=c["text"],
-                     font=("Segoe UI", 10, "bold")).pack(padx=20, pady=(16, 4))
-            pw_var = tk.StringVar()
-            ttk.Entry(dlg, textvariable=pw_var, show="•", width=32).pack(padx=20, pady=(0, 4))
+            dlg.geometry("360x300")
+            tk.Label(dlg, text=f"Redefinir senha: {nm}", bg=c["card"], fg=c["text"],
+                     font=("Segoe UI", 10, "bold")).pack(padx=20, pady=(16, 8))
+
+            pw_var = tk.StringVar(value=_gerar_senha())
+            pw_row = tk.Frame(dlg, bg=c["card"])
+            pw_row.pack(padx=20, fill="x")
+            pw_row.columnconfigure(0, weight=1)
+            ttk.Entry(pw_row, textvariable=pw_var, width=28).grid(row=0, column=0, sticky="ew")
+            tk.Button(pw_row, text="Gerar", bg="#1E3A5F", fg="white", relief="flat",
+                      font=("Segoe UI", 9), padx=8,
+                      command=lambda: pw_var.set(_gerar_senha())).grid(row=0, column=1, padx=(6, 0))
+
             force_var = tk.BooleanVar(value=True)
             ttk.Checkbutton(dlg, text="Forçar troca no próximo login",
-                            variable=force_var).pack(padx=20, anchor="w")
-            tk.Label(dlg, text="A senha deve ter ≥8 caracteres, maiúscula, minúscula, número e símbolo.",
-                     bg=c["card"], fg=c["muted"], font=("Segoe UI", 8), wraplength=320).pack(padx=20, pady=(4, 8))
+                            variable=force_var).pack(padx=20, anchor="w", pady=(6, 0))
+
+            v_email_notif = tk.StringVar(value=upn)
+            v_celular_notif = tk.StringVar(value=u.get("mobilePhone", "") or "")
+            notif_f = tk.Frame(dlg, bg=c["card"])
+            notif_f.pack(padx=20, fill="x", pady=(8, 0))
+            v_send_email = tk.BooleanVar(value=True)
+            v_send_wpp   = tk.BooleanVar(value=False)
+            ttk.Checkbutton(notif_f, text="Enviar nova senha por e-mail:", variable=v_send_email).grid(row=0, column=0, columnspan=2, sticky="w")
+            ttk.Entry(notif_f, textvariable=v_email_notif, width=36).grid(row=1, column=0, columnspan=2, sticky="ew", pady=(2, 4))
+            ttk.Checkbutton(notif_f, text="Enviar WhatsApp:", variable=v_send_wpp).grid(row=2, column=0, sticky="w")
+            ttk.Entry(notif_f, textvariable=v_celular_notif, width=20).grid(row=2, column=1, sticky="ew", padx=(4, 0))
+            notif_f.columnconfigure(1, weight=1)
 
             def _ok():
-                pw = pw_var.get()
+                pw = pw_var.get().strip()
                 if len(pw) < 8:
                     messagebox.showwarning("Senha", "A senha precisa ter ao menos 8 caracteres.", parent=dlg)
                     return
+                send_email = v_send_email.get()
+                send_wpp   = v_send_wpp.get()
+                email_dest = v_email_notif.get().strip()
+                cel_dest   = v_celular_notif.get().strip()
                 dlg.destroy()
                 def _do():
                     try:
                         self._ms_reset_password(u["id"], pw, force_var.get())
-                        self.root.after(0, lambda: messagebox.showinfo("Microsoft",
-                            f"Senha de {nm} redefinida com sucesso."))
+                        erros = []
+                        if send_email and email_dest:
+                            try:
+                                html = (
+                                    f"<p>Olá, <b>{nm}</b>!</p>"
+                                    f"<p>Sua senha corporativa foi redefinida.</p>"
+                                    f"<table style='border-collapse:collapse'>"
+                                    f"<tr><td style='padding:4px 12px 4px 0;color:#888'>E-mail:</td><td><b>{upn}</b></td></tr>"
+                                    f"<tr><td style='padding:4px 12px 4px 0;color:#888'>Nova senha:</td><td><b>{pw}</b></td></tr>"
+                                    f"</table>"
+                                    f"<p>Recomendamos que você altere sua senha após o primeiro acesso em:</p>"
+                                    f'<p><a href="https://aka.ms/sspr">https://aka.ms/sspr</a></p>'
+                                    f"<p style='color:#888;font-size:12px'>Atenciosamente,<br>Equipe DMS Empresarial</p>"
+                                )
+                                _ms_send_email(email_dest, f"Redefinição de senha — {nm}", html)
+                            except Exception as ex:
+                                erros.append(f"E-mail: {ex}")
+                        if send_wpp and cel_dest:
+                            msg = (f"Olá {nm}! Sua senha corporativa foi redefinida.\n\n"
+                                   f"E-mail: {upn}\nNova senha: {pw}\n\n"
+                                   f"Recomendamos alterar em: https://aka.ms/sspr")
+                            self.root.after(0, lambda m=msg, t=cel_dest: _abrir_whatsapp(t, m))
+                        def _fim():
+                            info = f"Senha de {nm} redefinida com sucesso."
+                            if erros:
+                                info += "\n\nAvisos:\n" + "\n".join(erros)
+                            messagebox.showinfo("Microsoft", info)
+                        self.root.after(0, _fim)
                     except Exception as ex:
-                        self.root.after(0, lambda: messagebox.showerror("Erro", str(ex)))
+                        self.root.after(0, lambda m=str(ex): messagebox.showerror("Erro", m))
                 _thr.Thread(target=_do, daemon=True).start()
 
             btn_f = ttk.Frame(dlg)
-            btn_f.pack(pady=(0, 16))
+            btn_f.pack(pady=(10, 16))
             ttk.Button(btn_f, text="Confirmar", style="Accent.TButton", command=_ok).pack(side="left", padx=4)
             ttk.Button(btn_f, text="Cancelar", command=dlg.destroy).pack(side="left", padx=4)
 
@@ -2356,49 +2406,135 @@ class MacroLockAnalyzerApp:
                 return f"{parts[0]}.{parts[-1]}"
             return parts[0] if parts else ""
 
+        def _gerar_senha() -> str:
+            import random, string
+            chars = string.ascii_uppercase + string.ascii_lowercase + string.digits + "!@#$%"
+            while True:
+                pw = "".join(random.choices(chars, k=12))
+                if (any(c.isupper() for c in pw) and any(c.islower() for c in pw)
+                        and any(c.isdigit() for c in pw) and any(c in "!@#$%" for c in pw)):
+                    return pw
+
+        def _apply_phone_mask(var):
+            """Máscara (XX) XXXXX-XXXX."""
+            _busy = [False]; _prev = [""]
+            def _on(*_):
+                if _busy[0]: return
+                _busy[0] = True
+                try:
+                    raw = "".join(c for c in var.get() if c.isdigit())[:11]
+                    if len(raw) <= 2:
+                        masked = f"({raw}"
+                    elif len(raw) <= 7:
+                        masked = f"({raw[:2]}) {raw[2:]}"
+                    elif len(raw) <= 11:
+                        masked = f"({raw[:2]}) {raw[2:7]}-{raw[7:]}"
+                    else:
+                        masked = _prev[0]
+                    if masked != var.get():
+                        _prev[0] = masked; var.set(masked)
+                    else:
+                        _prev[0] = var.get()
+                finally:
+                    _busy[0] = False
+            var.trace_add("write", _on)
+
+        def _ms_send_email(dest: str, subject: str, html_body: str):
+            admin_id = self._ms_email.get().strip()
+            self._ms_graph("POST", f"/users/{admin_id}/sendMail", json={
+                "message": {
+                    "subject": subject,
+                    "body": {"contentType": "HTML", "content": html_body},
+                    "toRecipients": [{"emailAddress": {"address": dest}}],
+                },
+                "saveToSentItems": True,
+            })
+
+        def _abrir_whatsapp(telefone: str, msg: str):
+            import urllib.parse, webbrowser
+            digits = "".join(c for c in telefone if c.isdigit())
+            if not digits.startswith("55"):
+                digits = "55" + digits
+            url = f"https://wa.me/{digits}?text={urllib.parse.quote(msg)}"
+            webbrowser.open(url)
+
         def _novo_usuario():
             result = [None]
             DOMAIN = "@dmsempresarial.com.br"
             dlg = tk.Toplevel(self.root)
             dlg.title("Novo Usuário")
-            dlg.resizable(False, False)
+            dlg.resizable(True, True)
             dlg.grab_set()
             dlg.configure(bg=c["card"])
-            dlg.geometry("440x420")
+            dlg.geometry("460x540")
+            dlg.minsize(460, 540)
 
-            frm = tk.Frame(dlg, bg=c["card"])
-            frm.pack(fill="both", expand=True, padx=20, pady=12)
+            # Frame rolável
+            canvas_d = tk.Canvas(dlg, bg=c["card"], highlightthickness=0)
+            sb_d = ttk.Scrollbar(dlg, orient="vertical", command=canvas_d.yview)
+            canvas_d.configure(yscrollcommand=sb_d.set)
+            sb_d.pack(side="right", fill="y")
+            canvas_d.pack(side="left", fill="both", expand=True)
+            frm = tk.Frame(canvas_d, bg=c["card"])
+            win_d = canvas_d.create_window((0, 0), window=frm, anchor="nw")
+            frm.bind("<Configure>", lambda e: canvas_d.configure(scrollregion=canvas_d.bbox("all")))
+            canvas_d.bind("<Configure>", lambda e: canvas_d.itemconfig(win_d, width=e.width))
+            canvas_d.bind("<MouseWheel>", lambda e: canvas_d.yview_scroll(-1*(e.delta//120), "units"))
+
             frm.columnconfigure(0, weight=1)
 
             def _lbl(text, row):
                 tk.Label(frm, text=text, bg=c["card"], fg=c["muted"],
-                         font=("Segoe UI", 9), anchor="w").grid(row=row, column=0, sticky="w", pady=(8, 0))
+                         font=("Segoe UI", 9), anchor="w").grid(row=row, column=0, columnspan=2, sticky="w", padx=16, pady=(8, 0))
 
             v_nome    = tk.StringVar()
             v_upn     = tk.StringVar()
             v_cargo   = tk.StringVar()
             v_depto   = tk.StringVar()
             v_email_p = tk.StringVar()
-            v_senha   = tk.StringVar()
+            v_celular = tk.StringVar()
+            v_senha   = tk.StringVar(value=_gerar_senha())
 
-            _lbl("Nome de exibição*  (como aparece no e-mail, Teams, SharePoint)", 0)
-            ttk.Entry(frm, textvariable=v_nome, width=42).grid(row=1, column=0, sticky="ew")
+            _apply_phone_mask(v_celular)
+
+            _lbl("Nome de exibição*  (e-mail, Teams, SharePoint)", 0)
+            ttk.Entry(frm, textvariable=v_nome, width=44).grid(row=1, column=0, columnspan=2, sticky="ew", padx=16)
 
             _lbl("E-mail corporativo*", 2)
-            upn_entry = ttk.Entry(frm, textvariable=v_upn, width=42)
-            upn_entry.grid(row=3, column=0, sticky="ew")
+            ttk.Entry(frm, textvariable=v_upn, width=44).grid(row=3, column=0, columnspan=2, sticky="ew", padx=16)
 
             _lbl("Cargo", 4)
-            ttk.Entry(frm, textvariable=v_cargo, width=42).grid(row=5, column=0, sticky="ew")
+            ttk.Entry(frm, textvariable=v_cargo, width=44).grid(row=5, column=0, columnspan=2, sticky="ew", padx=16)
 
             _lbl("Departamento", 6)
-            ttk.Entry(frm, textvariable=v_depto, width=42).grid(row=7, column=0, sticky="ew")
+            ttk.Entry(frm, textvariable=v_depto, width=44).grid(row=7, column=0, columnspan=2, sticky="ew", padx=16)
 
-            _lbl("E-mail pessoal  (recebe link de boas-vindas)", 8)
-            ttk.Entry(frm, textvariable=v_email_p, width=42).grid(row=9, column=0, sticky="ew")
+            _lbl("E-mail pessoal  (boas-vindas)", 8)
+            ttk.Entry(frm, textvariable=v_email_p, width=44).grid(row=9, column=0, columnspan=2, sticky="ew", padx=16)
 
-            _lbl("Senha inicial*  (mín. 8 chars, maiúscula, número e símbolo)", 10)
-            ttk.Entry(frm, textvariable=v_senha, show="•", width=42).grid(row=11, column=0, sticky="ew")
+            _lbl("Celular  (WhatsApp)", 10)
+            ttk.Entry(frm, textvariable=v_celular, width=44).grid(row=11, column=0, columnspan=2, sticky="ew", padx=16)
+
+            _lbl("Senha temporária*", 12)
+            pw_row = tk.Frame(frm, bg=c["card"])
+            pw_row.grid(row=13, column=0, columnspan=2, sticky="ew", padx=16)
+            pw_row.columnconfigure(0, weight=1)
+            pw_entry = ttk.Entry(pw_row, textvariable=v_senha, width=32)
+            pw_entry.grid(row=0, column=0, sticky="ew")
+            tk.Button(pw_row, text="Gerar", bg="#1E3A5F", fg="white", relief="flat",
+                      font=("Segoe UI", 9), padx=8,
+                      command=lambda: v_senha.set(_gerar_senha())).grid(row=0, column=1, padx=(6, 0))
+
+            tk.Label(frm, text="A pessoa recebe a senha e um link para criar a própria senha.",
+                     bg=c["card"], fg=c["muted"], font=("Segoe UI", 8), wraplength=400, justify="left",
+                     anchor="w").grid(row=14, column=0, columnspan=2, sticky="w", padx=16, pady=(2, 0))
+
+            notif_row = tk.Frame(frm, bg=c["card"])
+            notif_row.grid(row=15, column=0, columnspan=2, sticky="w", padx=16, pady=(10, 4))
+            v_notif_email = tk.BooleanVar(value=True)
+            v_notif_wpp   = tk.BooleanVar(value=False)
+            ttk.Checkbutton(notif_row, text="Enviar e-mail de boas-vindas", variable=v_notif_email).pack(anchor="w")
+            ttk.Checkbutton(notif_row, text="Enviar mensagem WhatsApp",    variable=v_notif_wpp).pack(anchor="w")
 
             def _auto_upn(*_):
                 slug = _slugify(v_nome.get())
@@ -2411,7 +2547,7 @@ class MacroLockAnalyzerApp:
                 upn  = v_upn.get().strip()
                 pw   = v_senha.get().strip()
                 if not nome or not upn:
-                    messagebox.showwarning("Campos obrigatórios", "Nome de exibição e E-mail são obrigatórios.", parent=dlg)
+                    messagebox.showwarning("Obrigatório", "Nome de exibição e E-mail são obrigatórios.", parent=dlg)
                     return
                 if len(pw) < 8:
                     messagebox.showwarning("Senha", "A senha precisa ter ao menos 8 caracteres.", parent=dlg)
@@ -2426,19 +2562,21 @@ class MacroLockAnalyzerApp:
                     "accountEnabled": True,
                     "passwordProfile": {"password": pw, "forceChangePasswordNextSignIn": True},
                 }
-                if v_cargo.get().strip():  data["jobTitle"]    = v_cargo.get().strip()
-                if v_depto.get().strip():  data["department"]  = v_depto.get().strip()
-                result[0] = (data, v_email_p.get().strip())
+                if v_cargo.get().strip():   data["jobTitle"]   = v_cargo.get().strip()
+                if v_depto.get().strip():   data["department"] = v_depto.get().strip()
+                if v_celular.get().strip(): data["mobilePhone"] = v_celular.get().strip()
+                result[0] = (data, v_email_p.get().strip(), v_celular.get().strip(),
+                             pw, v_notif_email.get(), v_notif_wpp.get())
                 dlg.destroy()
 
-            btn_f = ttk.Frame(dlg)
-            btn_f.pack(pady=(4, 16))
+            btn_f = tk.Frame(frm, bg=c["card"])
+            btn_f.grid(row=16, column=0, columnspan=2, pady=(12, 16))
             ttk.Button(btn_f, text="Criar usuário", style="Accent.TButton", command=_ok).pack(side="left", padx=4)
             ttk.Button(btn_f, text="Cancelar", command=dlg.destroy).pack(side="left", padx=4)
             dlg.wait_window()
             if result[0] is None:
                 return
-            user_data, email_pessoal = result[0]
+            user_data, email_pessoal, celular, pw_gerada, notif_email, notif_wpp = result[0]
 
             def _do():
                 try:
@@ -2447,34 +2585,39 @@ class MacroLockAnalyzerApp:
                     self.root.after(0, _refresh_tree)
                     nm  = user_data["displayName"]
                     upn = user_data["userPrincipalName"]
-                    # Enviar e-mail de boas-vindas se e-mail pessoal informado
-                    if email_pessoal:
+                    erros = []
+
+                    if notif_email and email_pessoal:
                         try:
-                            admin_id = self._ms_email.get().strip()
-                            html_body = (
-                                f"<p>Olá, <b>{nm}</b>!</p>"
+                            html = (
+                                f"<p>Olá, <b>{nm}</b>! Seja bem-vindo(a) à <b>DMS Empresarial</b>.</p>"
                                 f"<p>Sua conta corporativa foi criada com sucesso.</p>"
-                                f"<p><b>E-mail de acesso:</b> {upn}</p>"
-                                f"<p>Acesse o link abaixo para definir sua senha e ativar sua conta:</p>"
-                                f'<p><a href="https://aka.ms/sspr">https://aka.ms/sspr</a></p>'
-                                f"<p>Equipe DMS Empresarial</p>"
+                                f"<table style='border-collapse:collapse'>"
+                                f"<tr><td style='padding:4px 12px 4px 0;color:#888'>E-mail:</td><td><b>{upn}</b></td></tr>"
+                                f"<tr><td style='padding:4px 12px 4px 0;color:#888'>Senha temporária:</td><td><b>{pw_gerada}</b></td></tr>"
+                                f"</table>"
+                                f"<p>Use o link abaixo para acessar e criar sua senha definitiva:</p>"
+                                f'<p><a href="https://aka.ms/sspr" style="color:#0078d4">Clique aqui para definir sua senha</a></p>'
+                                f"<p style='color:#888;font-size:12px'>Atenciosamente,<br>Equipe DMS Empresarial</p>"
                             )
-                            self._ms_graph("POST", f"/users/{admin_id}/sendMail", json={
-                                "message": {
-                                    "subject": f"Bem-vindo(a) à DMS Empresarial — {nm}",
-                                    "body": {"contentType": "HTML", "content": html_body},
-                                    "toRecipients": [{"emailAddress": {"address": email_pessoal}}],
-                                },
-                                "saveToSentItems": True,
-                            })
-                            self.root.after(0, lambda: messagebox.showinfo("Microsoft",
-                                f"Usuário {nm} criado!\nE-mail de boas-vindas enviado para {email_pessoal}."))
-                        except Exception:
-                            self.root.after(0, lambda: messagebox.showinfo("Microsoft",
-                                f"Usuário {nm} criado!\n(Não foi possível enviar o e-mail de boas-vindas.)"))
-                    else:
-                        self.root.after(0, lambda: messagebox.showinfo("Microsoft",
-                            f"Usuário {nm} criado com sucesso."))
+                            _ms_send_email(email_pessoal, f"Bem-vindo(a) à DMS Empresarial — {nm}", html)
+                        except Exception as ex:
+                            erros.append(f"E-mail: {ex}")
+
+                    if notif_wpp and celular:
+                        msg = (f"Olá {nm}! Seja bem-vindo(a) à DMS Empresarial.\n\n"
+                               f"Sua conta foi criada:\n"
+                               f"E-mail: {upn}\n"
+                               f"Senha temporária: {pw_gerada}\n\n"
+                               f"Acesse para criar sua senha: https://aka.ms/sspr")
+                        self.root.after(0, lambda m=msg, t=celular: _abrir_whatsapp(t, m))
+
+                    def _fim():
+                        msg = f"Usuário {nm} criado com sucesso."
+                        if erros:
+                            msg += "\n\nAvisos:\n" + "\n".join(erros)
+                        messagebox.showinfo("Microsoft", msg)
+                    self.root.after(0, _fim)
                 except Exception as ex:
                     self.root.after(0, lambda m=str(ex): messagebox.showerror("Erro", m))
             _thr.Thread(target=_do, daemon=True).start()
