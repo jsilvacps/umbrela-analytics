@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "Umbrela Analytics"
-APP_VERSION = "8.58"
+APP_VERSION = "8.59"
 GITHUB_REPO = "jsilvacps/umbrela-analytics"   # repositório público de releases
 DEFAULT_EXCLUDE = "OFFLINE, [LOCK.OFFLINE], [LOCK.LOGIN], LOGIN, LOGOUT"
 LOGO_FILE = "logo_umbrela_analytics.png"
@@ -3802,7 +3802,7 @@ class MacroLockAnalyzerApp:
         cfg_grid.columnconfigure(1, weight=1)
 
         def _lbl_entry(row, text, var, show=""):
-            tk.Label(cfg_grid, text=text, bg=c["card"], fg=c["label"],
+            tk.Label(cfg_grid, text=text, bg=c["card"], fg=c["muted"],
                      font=("Segoe UI", 9), anchor="w").grid(row=row, column=0, sticky="w", pady=3, padx=(0, 10))
             e = ttk.Entry(cfg_grid, textvariable=var, show=show, font=("Segoe UI", 9))
             e.grid(row=row, column=1, sticky="ew", pady=3)
