@@ -2135,12 +2135,14 @@ class MacroLockAnalyzerApp:
         cfg_grid.pack(fill="x", pady=(0, 8))
         cfg_grid.columnconfigure(1, weight=1)
 
-        for row, (lbl, var, show) in enumerate([
-            ("Tenant ID", self._ms_tenant_id,  True),
-            ("Client ID", self._ms_client_id,  True),
-            ("E-mail",    self._ms_email,       True),
-            ("Senha",     self._ms_password,    False),
+        for row, (lbl, var, show, visible) in enumerate([
+            ("Tenant ID", self._ms_tenant_id,  True,  False),
+            ("Client ID", self._ms_client_id,  True,  False),
+            ("E-mail",    self._ms_email,       True,  True),
+            ("Senha",     self._ms_password,    False, True),
         ]):
+            if not visible:
+                continue
             tk.Label(cfg_grid, text=lbl, bg=c["card"], fg=c["muted"],
                      font=("Segoe UI", 9)).grid(row=row, column=0, sticky="w", padx=(0, 12), pady=3)
             show_char = "" if show else "•"
