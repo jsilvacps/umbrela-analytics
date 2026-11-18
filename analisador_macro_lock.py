@@ -2042,6 +2042,7 @@ class MacroLockAnalyzerApp:
         import json
         data = {"tenant_id": self._ms_tenant_id.get().strip(),
                 "client_id": self._ms_client_id.get().strip(),
+                "client_secret": self._ms_client_secret.get().strip(),
                 "email": self._ms_email.get().strip()}
         try:
             self._ms_config_file.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
@@ -2057,7 +2058,7 @@ class MacroLockAnalyzerApp:
         usr = self._ms_email.get().strip()
         pwd = self._ms_password.get()
         if not (tid and cid and usr and pwd):
-            raise ValueError("Preencha Tenant ID, Client ID, E-mail e Senha.")
+            raise ValueError("Preencha E-mail e Senha.")
         url = f"https://login.microsoftonline.com/{tid}/oauth2/v2.0/token"
         sec = self._ms_client_secret.get().strip()
         body = {"grant_type": "password", "client_id": cid,
