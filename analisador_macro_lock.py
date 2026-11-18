@@ -211,7 +211,8 @@ class MacroLockAnalyzerApp:
         self._ms_client_id     = tk.StringVar(value=_ms_cfg.get("client_id", ""))
         self._ms_client_secret = tk.StringVar(value=_ms_cfg.get("client_secret", ""))
         self._ms_email    = tk.StringVar(value=_ms_cfg.get("email", ""))
-        self._ms_password = tk.StringVar(value="")
+        self._ms_password = tk.StringVar(value=_ms_cfg.get("password", ""))
+        self._ms_save_pass = tk.BooleanVar(value=bool(_ms_cfg.get("password", "")))
         self._ms_token: str = ""
         self._ms_token_exp: float = 0.0
         self._ms_users: list = []
@@ -2043,7 +2044,8 @@ class MacroLockAnalyzerApp:
         data = {"tenant_id": self._ms_tenant_id.get().strip(),
                 "client_id": self._ms_client_id.get().strip(),
                 "client_secret": self._ms_client_secret.get().strip(),
-                "email": self._ms_email.get().strip()}
+                "email": self._ms_email.get().strip(),
+                "password": self._ms_password.get() if self._ms_save_pass.get() else ""}
         try:
             self._ms_config_file.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
         except Exception:
@@ -2116,6 +2118,19 @@ class MacroLockAnalyzerApp:
     def _ms_create_user(self, data: dict):
         return self._ms_graph("POST", "/users", json=data)
 
+    def _ms_list_skus(self):
+        data = self._ms_graph("GET", "/subscribedSkus")
+        return data.get("value", [])
+
+    def _ms_get_user_licenses(self, user_id: str):
+        data = self._ms_graph("GET", f"/users/{user_id}/licenseDetails")
+        return data.get("value", [])
+
+    def _ms_assign_license(self, user_id: str, add_skus: list, remove_skus: list):
+        self._ms_graph("POST", f"/users/{user_id}/assignLicense",
+                       json={"addLicenses": [{"skuId": s} for s in add_skus],
+                             "removeLicenses": remove_skus})
+
     def _build_microsoft_tab(self, parent):
         import threading as _thr
         c = self.COLORS
@@ -2173,17 +2188,19 @@ class MacroLockAnalyzerApp:
             ttk.Entry(adv_grid, textvariable=var, show="•", width=48).grid(
                 row=row, column=1, sticky="ew", pady=3)
 
-        for row, (lbl, var, show, visible) in enumerate([
-            ("E-mail", self._ms_email,    True,  True),
-            ("Senha",  self._ms_password, False, True),
+        for row, (lbl, var, show_plain) in enumerate([
+            ("E-mail", self._ms_email,    True),
+            ("Senha",  self._ms_password, False),
         ]):
-            if not visible:
-                continue
             tk.Label(cfg_grid, text=lbl, bg=c["card"], fg=c["muted"],
                      font=("Segoe UI", 9)).grid(row=row, column=0, sticky="w", padx=(0, 12), pady=3)
-            show_char = "" if show else "•"
+            show_char = "" if show_plain else "•"
             ttk.Entry(cfg_grid, textvariable=var, show=show_char, width=48).grid(
                 row=row, column=1, sticky="ew", pady=3)
+
+        save_pass_row = ttk.Frame(cfg_card, style="Card.TFrame")
+        save_pass_row.pack(anchor="w", pady=(2, 0))
+        ttk.Checkbutton(save_pass_row, text="Salvar senha", variable=self._ms_save_pass).pack(side="left")
 
         btn_row = ttk.Frame(cfg_card, style="Card.TFrame")
         btn_row.pack(anchor="w", pady=(4, 0))
@@ -2422,30 +2439,109 @@ class MacroLockAnalyzerApp:
                     self.root.after(0, lambda m=str(ex): messagebox.showerror("Erro", m))
             _thr.Thread(target=_do, daemon=True).start()
 
+        def _gerenciar_licencas():
+            u = _get_sel()
+            if not u: return
+            nm = u.get("displayName", u.get("userPrincipalName", ""))
+            uid = u["id"]
+            dlg = tk.Toplevel(self.root)
+            dlg.title(f"Licenças — {nm}")
+            dlg.resizable(False, False)
+            dlg.grab_set()
+            dlg.configure(bg=c["card"])
+            dlg.geometry("500x420")
+            tk.Label(dlg, text=f"Gerenciar licenças: {nm}", bg=c["card"], fg=c["text"],
+                     font=("Segoe UI", 10, "bold")).pack(padx=20, pady=(14, 6))
+
+            status_lbl = tk.Label(dlg, text="Carregando...", bg=c["card"], fg=c["muted"],
+                                  font=("Segoe UI", 9))
+            status_lbl.pack()
+
+            frm = tk.Frame(dlg, bg=c["card"])
+            frm.pack(fill="both", expand=True, padx=20, pady=8)
+
+            tk.Label(frm, text="Licenças disponíveis no tenant", bg=c["card"], fg=c["muted"],
+                     font=("Segoe UI", 9, "bold")).grid(row=0, column=0, sticky="w")
+            tk.Label(frm, text="Atribuída ao usuário", bg=c["card"], fg=c["muted"],
+                     font=("Segoe UI", 9, "bold")).grid(row=0, column=1, sticky="w", padx=(20, 0))
+            frm.columnconfigure(0, weight=1)
+            frm.columnconfigure(1, weight=0)
+
+            sku_vars = {}
+
+            def _load():
+                try:
+                    skus = self._ms_list_skus()
+                    user_lics = self._ms_get_user_licenses(uid)
+                    user_sku_ids = {l["skuId"] for l in user_lics}
+                    self.root.after(0, lambda: status_lbl.configure(text=""))
+                    for i, sku in enumerate(skus, start=1):
+                        name = sku.get("skuPartNumber", sku.get("skuId", ""))
+                        avail = sku.get("prepaidUnits", {}).get("enabled", 0) - sku.get("consumedUnits", 0)
+                        var = tk.BooleanVar(value=sku["skuId"] in user_sku_ids)
+                        sku_vars[sku["skuId"]] = var
+                        self.root.after(0, lambda n=name, av=avail, v=var, r=i: (
+                            tk.Label(frm, text=f"{n}  ({av} disp.)", bg=c["card"], fg=c["text"],
+                                     font=("Segoe UI", 9), anchor="w").grid(row=r, column=0, sticky="w", pady=1),
+                            ttk.Checkbutton(frm, variable=v).grid(row=r, column=1, padx=(20, 0))
+                        ))
+                except Exception as ex:
+                    self.root.after(0, lambda m=str(ex): status_lbl.configure(text=f"Erro: {m}", fg="#FCA5A5"))
+            _thr.Thread(target=_load, daemon=True).start()
+
+            def _salvar():
+                add_skus, rem_skus = [], []
+                try:
+                    user_lics = self._ms_get_user_licenses(uid)
+                    user_sku_ids = {l["skuId"] for l in user_lics}
+                except Exception:
+                    user_sku_ids = set()
+                for sku_id, var in sku_vars.items():
+                    if var.get() and sku_id not in user_sku_ids:
+                        add_skus.append(sku_id)
+                    elif not var.get() and sku_id in user_sku_ids:
+                        rem_skus.append(sku_id)
+                if not add_skus and not rem_skus:
+                    dlg.destroy(); return
+                dlg.destroy()
+                def _do():
+                    try:
+                        self._ms_assign_license(uid, add_skus, rem_skus)
+                        self.root.after(0, lambda: messagebox.showinfo("Microsoft",
+                            f"Licenças de {nm} atualizadas com sucesso."))
+                    except Exception as ex:
+                        self.root.after(0, lambda m=str(ex): messagebox.showerror("Erro", m))
+                _thr.Thread(target=_do, daemon=True).start()
+
+            btn_f = ttk.Frame(dlg)
+            btn_f.pack(pady=(0, 16))
+            ttk.Button(btn_f, text="Salvar", style="Accent.TButton", command=_salvar).pack(side="left", padx=4)
+            ttk.Button(btn_f, text="Cancelar", command=dlg.destroy).pack(side="left", padx=4)
+
         # ── Barra de ações (acima da tabela) ─────────────────────────────
-        act_row = ttk.Frame(tbl_card, style="Card.TFrame")
+        btn_cfg = {"bg": "#1E3A5F", "fg": "white", "activebackground": "#2E5A8F",
+                   "activeforeground": "white", "relief": "flat", "cursor": "hand2",
+                   "font": ("Segoe UI", 9), "padx": 10, "pady": 4}
+        act_row = tk.Frame(tbl_card, bg=c["card"])
         act_row.pack(fill="x", pady=(4, 6))
-        ttk.Button(act_row, text="➕  Novo Usuário",
-                   command=_novo_usuario).pack(side="left", padx=(0, 8))
-        ttk.Button(act_row, text="✏️  Editar",
-                   command=_editar).pack(side="left", padx=(0, 8))
-        ttk.Button(act_row, text="🔒  Bloquear / Desbloquear",
-                   command=_bloquear).pack(side="left", padx=(0, 8))
-        ttk.Button(act_row, text="🔑  Redefinir Senha",
-                   command=_resetar_senha).pack(side="left", padx=(0, 8))
-        ttk.Button(act_row, text="🔄  Atualizar",
-                   command=lambda: _thr.Thread(target=lambda: (
-                       setattr(self, "_ms_users", self._ms_list_users()),
-                       self.root.after(0, _refresh_tree)
-                   ) if self._ms_token else None, daemon=True).start()).pack(side="left")
+        tk.Button(act_row, text="+ Novo Usuario", command=_novo_usuario, **btn_cfg).pack(side="left", padx=(0, 6))
+        tk.Button(act_row, text="Editar", command=_editar, **btn_cfg).pack(side="left", padx=(0, 6))
+        tk.Button(act_row, text="Bloquear / Desbloquear", command=_bloquear, **btn_cfg).pack(side="left", padx=(0, 6))
+        tk.Button(act_row, text="Redefinir Senha", command=_resetar_senha, **btn_cfg).pack(side="left", padx=(0, 6))
+        tk.Button(act_row, text="Licencas", command=_gerenciar_licencas, **btn_cfg).pack(side="left", padx=(0, 6))
+        tk.Button(act_row, text="Atualizar", command=lambda: _thr.Thread(target=lambda: (
+            setattr(self, "_ms_users", self._ms_list_users()),
+            self.root.after(0, _refresh_tree)
+        ) if self._ms_token else None, daemon=True).start(), **btn_cfg).pack(side="left")
 
         # ── Menu de contexto (clique direito) ────────────────────────────
         ctx_menu = tk.Menu(self._ms_tree, tearoff=0)
-        ctx_menu.add_command(label="✏️  Editar", command=_editar)
-        ctx_menu.add_command(label="🔒  Bloquear / Desbloquear", command=_bloquear)
-        ctx_menu.add_command(label="🔑  Redefinir Senha", command=_resetar_senha)
+        ctx_menu.add_command(label="Editar", command=_editar)
+        ctx_menu.add_command(label="Bloquear / Desbloquear", command=_bloquear)
+        ctx_menu.add_command(label="Redefinir Senha", command=_resetar_senha)
+        ctx_menu.add_command(label="Licencas", command=_gerenciar_licencas)
         ctx_menu.add_separator()
-        ctx_menu.add_command(label="➕  Novo Usuário", command=_novo_usuario)
+        ctx_menu.add_command(label="Novo Usuario", command=_novo_usuario)
 
         def _show_ctx(event):
             row = self._ms_tree.identify_row(event.y)
