@@ -2188,6 +2188,7 @@ class MacroLockAnalyzerApp:
             ttk.Entry(adv_grid, textvariable=var, show="•", width=48).grid(
                 row=row, column=1, sticky="ew", pady=3)
 
+        _pw_entry = None
         for row, (lbl, var, show_plain) in enumerate([
             ("E-mail", self._ms_email,    True),
             ("Senha",  self._ms_password, False),
@@ -2195,8 +2196,10 @@ class MacroLockAnalyzerApp:
             tk.Label(cfg_grid, text=lbl, bg=c["card"], fg=c["muted"],
                      font=("Segoe UI", 9)).grid(row=row, column=0, sticky="w", padx=(0, 12), pady=3)
             show_char = "" if show_plain else "•"
-            ttk.Entry(cfg_grid, textvariable=var, show=show_char, width=48).grid(
-                row=row, column=1, sticky="ew", pady=3)
+            ent = ttk.Entry(cfg_grid, textvariable=var, show=show_char, width=48)
+            ent.grid(row=row, column=1, sticky="ew", pady=3)
+            if not show_plain:
+                _pw_entry = ent
 
         save_pass_row = ttk.Frame(cfg_card, style="Card.TFrame")
         save_pass_row.pack(anchor="w", pady=(2, 0))
@@ -2229,6 +2232,8 @@ class MacroLockAnalyzerApp:
             _thr.Thread(target=_do, daemon=True).start()
 
         ttk.Button(btn_row, text="🔗  Conectar", style="Accent.TButton", command=_connect).pack(side="left")
+        if _pw_entry:
+            _pw_entry.bind("<Return>", lambda e: _connect())
 
         # ── Card pesquisa + tabela ───────────────────────────────────────
         outer_tbl, tbl_card = self._card(inner)
@@ -2243,8 +2248,8 @@ class MacroLockAnalyzerApp:
         ttk.Entry(search_row, textvariable=self._ms_search_var).grid(row=0, column=1, sticky="ew")
 
         cols = ("Nome", "E-mail", "Cargo", "Depto", "Status")
+        # Cria tree mas NÃO empacota ainda — act_row deve ser empacotado primeiro
         tree_frame = ttk.Frame(tbl_card)
-        tree_frame.pack(fill="both", expand=True)
         vsb = ttk.Scrollbar(tree_frame, orient="vertical")
         self._ms_tree = ttk.Treeview(tree_frame, columns=cols, show="headings",
                                      height=14, yscrollcommand=vsb.set)
@@ -2524,6 +2529,8 @@ class MacroLockAnalyzerApp:
                    "font": ("Segoe UI", 9), "padx": 10, "pady": 4}
         act_row = tk.Frame(tbl_card, bg=c["card"])
         act_row.pack(fill="x", pady=(4, 6))
+        # Tabela empacotada DEPOIS dos botões para ficar abaixo deles
+        tree_frame.pack(fill="both", expand=True)
         tk.Button(act_row, text="+ Novo Usuario", command=_novo_usuario, **btn_cfg).pack(side="left", padx=(0, 6))
         tk.Button(act_row, text="Editar", command=_editar, **btn_cfg).pack(side="left", padx=(0, 6))
         tk.Button(act_row, text="Bloquear / Desbloquear", command=_bloquear, **btn_cfg).pack(side="left", padx=(0, 6))
