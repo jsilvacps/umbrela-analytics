@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "Umbrela Analytics"
-APP_VERSION = "8.57"
+APP_VERSION = "8.58"
 GITHUB_REPO = "jsilvacps/umbrela-analytics"   # repositório público de releases
 DEFAULT_EXCLUDE = "OFFLINE, [LOCK.OFFLINE], [LOCK.LOGIN], LOGIN, LOGOUT"
 LOGO_FILE = "logo_umbrela_analytics.png"
@@ -289,7 +289,19 @@ class MacroLockAnalyzerApp:
             exe_asset = next(
                 (a for a in assets if a["name"].lower().endswith(".exe")
                  and "setup" not in a["name"].lower()), None)
+
+            html_url = data.get("html_url", f"https://github.com/{GITHUB_REPO}/releases/latest")
+
             if not exe_asset:
+                # Sem .exe no release — abre página do release no navegador
+                msg = (f"Nova versão disponível: v{tag}\n\n"
+                       f"{body[:300].strip()}\n\n" if body else
+                       f"Nova versão disponível: v{tag}\n\n") + \
+                      "Clique em Sim para abrir a página de download no navegador."
+                self.root.after(0, lambda u=html_url, t=tag, m=msg: (
+                    messagebox.askyesno(f"Atualização disponível — v{t}", m, icon="question")
+                    and __import__("webbrowser").open(u)
+                ))
                 return
 
             dl_url  = exe_asset["browser_download_url"]
