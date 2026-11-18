@@ -2212,7 +2212,7 @@ class MacroLockAnalyzerApp:
         outer_tbl.pack(fill="both", expand=True, pady=(0, 12))
 
         search_row = ttk.Frame(tbl_card, style="Card.TFrame")
-        search_row.pack(fill="x", pady=(0, 8))
+        search_row.pack(fill="x", pady=(0, 4))
         search_row.columnconfigure(1, weight=1)
         tk.Label(search_row, text="🔍  Pesquisar:", bg=c["card"], fg=c["muted"],
                  font=("Segoe UI", 9)).grid(row=0, column=0, padx=(0, 8))
@@ -2252,14 +2252,6 @@ class MacroLockAnalyzerApp:
                 ), tags=(tag,))
 
         self._ms_search_var.trace_add("write", lambda *_: _refresh_tree())
-
-        # ── Card ações ───────────────────────────────────────────────────
-        outer_act, act_card = self._card(inner)
-        outer_act.pack(fill="x", pady=(0, 12))
-        self._section_label(act_card, "AÇÕES NO USUÁRIO SELECIONADO")
-
-        act_row = ttk.Frame(act_card, style="Card.TFrame")
-        act_row.pack(fill="x", pady=(0, 8))
 
         def _get_sel():
             sel = self._ms_tree.selection()
@@ -2327,6 +2319,9 @@ class MacroLockAnalyzerApp:
             ttk.Button(btn_f, text="Confirmar", style="Accent.TButton", command=_ok).pack(side="left", padx=4)
             ttk.Button(btn_f, text="Cancelar", command=dlg.destroy).pack(side="left", padx=4)
 
+        # ── Barra de ações (acima da tabela) ─────────────────────────────
+        act_row = ttk.Frame(tbl_card, style="Card.TFrame")
+        act_row.pack(fill="x", pady=(4, 6))
         ttk.Button(act_row, text="🔒  Bloquear / Desbloquear",
                    command=_bloquear).pack(side="left", padx=(0, 8))
         ttk.Button(act_row, text="🔑  Redefinir Senha",
@@ -2336,6 +2331,19 @@ class MacroLockAnalyzerApp:
                        setattr(self, "_ms_users", self._ms_list_users()),
                        self.root.after(0, _refresh_tree)
                    ) if self._ms_token else None, daemon=True).start()).pack(side="left")
+
+        # ── Menu de contexto (clique direito) ────────────────────────────
+        ctx_menu = tk.Menu(self._ms_tree, tearoff=0)
+        ctx_menu.add_command(label="🔒  Bloquear / Desbloquear", command=_bloquear)
+        ctx_menu.add_command(label="🔑  Redefinir Senha", command=_resetar_senha)
+
+        def _show_ctx(event):
+            row = self._ms_tree.identify_row(event.y)
+            if row:
+                self._ms_tree.selection_set(row)
+                ctx_menu.post(event.x_root, event.y_root)
+
+        self._ms_tree.bind("<Button-3>", _show_ctx)
 
     def _mk_log(self, msg: str, level: str = "info"):
         """Escreve no log da aba Makrolock. level: 'info' | 'ok' | 'warn' | 'error'"""
