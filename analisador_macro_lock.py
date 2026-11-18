@@ -2059,13 +2059,13 @@ class MacroLockAnalyzerApp:
         if not (tid and cid and usr and pwd):
             raise ValueError("Preencha Tenant ID, Client ID, E-mail e Senha.")
         url = f"https://login.microsoftonline.com/{tid}/oauth2/v2.0/token"
-        resp = _req.post(url, data={
-            "grant_type": "password",
-            "client_id": cid,
-            "username": usr,
-            "password": pwd,
-            "scope": "https://graph.microsoft.com/User.ReadWrite.All https://graph.microsoft.com/Directory.ReadWrite.All offline_access",
-        }, timeout=15)
+        sec = self._ms_client_secret.get().strip()
+        body = {"grant_type": "password", "client_id": cid,
+                "username": usr, "password": pwd,
+                "scope": "https://graph.microsoft.com/.default offline_access"}
+        if sec:
+            body["client_secret"] = sec
+        resp = _req.post(url, data=body, timeout=15)
         if not resp.ok:
             try:
                 err = resp.json().get("error_description") or resp.json().get("error") or resp.text
@@ -2135,11 +2135,40 @@ class MacroLockAnalyzerApp:
         cfg_grid.pack(fill="x", pady=(0, 8))
         cfg_grid.columnconfigure(1, weight=1)
 
+        # Botão para mostrar/esconder configuração avançada
+        _adv_shown = [False]
+        adv_toggle = tk.Label(cfg_card, text="⚙ Configuração avançada ▶", bg=c["card"],
+                              fg="#2D5A8A", font=("Segoe UI", 8), cursor="hand2")
+        adv_toggle.pack(anchor="w", pady=(0, 6))
+        adv_frame = ttk.Frame(cfg_card, style="Card.TFrame")
+
+        def _toggle_adv(e=None):
+            if _adv_shown[0]:
+                adv_frame.pack_forget()
+                adv_toggle.configure(text="⚙ Configuração avançada ▶")
+                _adv_shown[0] = False
+            else:
+                adv_frame.pack(fill="x", pady=(0, 8))
+                adv_toggle.configure(text="⚙ Configuração avançada ▼")
+                _adv_shown[0] = True
+        adv_toggle.bind("<Button-1>", _toggle_adv)
+
+        adv_grid = ttk.Frame(adv_frame, style="Card.TFrame")
+        adv_grid.pack(fill="x")
+        adv_grid.columnconfigure(1, weight=1)
+        for row, (lbl, var) in enumerate([
+            ("Tenant ID",     self._ms_tenant_id),
+            ("Client ID",     self._ms_client_id),
+            ("Client Secret", self._ms_client_secret),
+        ]):
+            tk.Label(adv_grid, text=lbl, bg=c["card"], fg=c["muted"],
+                     font=("Segoe UI", 9)).grid(row=row, column=0, sticky="w", padx=(0,12), pady=3)
+            ttk.Entry(adv_grid, textvariable=var, show="•", width=48).grid(
+                row=row, column=1, sticky="ew", pady=3)
+
         for row, (lbl, var, show, visible) in enumerate([
-            ("Tenant ID", self._ms_tenant_id,  True,  False),
-            ("Client ID", self._ms_client_id,  True,  False),
-            ("E-mail",    self._ms_email,       True,  True),
-            ("Senha",     self._ms_password,    False, True),
+            ("E-mail", self._ms_email,    True,  True),
+            ("Senha",  self._ms_password, False, True),
         ]):
             if not visible:
                 continue
