@@ -2110,6 +2110,12 @@ class MacroLockAnalyzerApp:
             "passwordProfile": {"password": new_password, "forceChangePasswordNextSignIn": force_change}
         })
 
+    def _ms_update_user(self, user_id: str, data: dict):
+        self._ms_graph("PATCH", f"/users/{user_id}", json=data)
+
+    def _ms_create_user(self, data: dict):
+        return self._ms_graph("POST", "/users", json=data)
+
     def _build_microsoft_tab(self, parent):
         import threading as _thr
         c = self.COLORS
@@ -2319,14 +2325,115 @@ class MacroLockAnalyzerApp:
             ttk.Button(btn_f, text="Confirmar", style="Accent.TButton", command=_ok).pack(side="left", padx=4)
             ttk.Button(btn_f, text="Cancelar", command=dlg.destroy).pack(side="left", padx=4)
 
+        def _user_form_dialog(title: str, initial: dict = None):
+            """Abre dialog com campos de usuário. Retorna dict com os dados ou None se cancelado."""
+            result = [None]
+            dlg = tk.Toplevel(self.root)
+            dlg.title(title)
+            dlg.resizable(False, False)
+            dlg.grab_set()
+            dlg.configure(bg=c["card"])
+            dlg.geometry("420x520")
+
+            fields = [
+                ("Nome completo*", "displayName"),
+                ("Nome (primeiro)*", "givenName"),
+                ("Sobrenome*", "surname"),
+                ("E-mail / UPN*", "userPrincipalName"),
+                ("Apelido de e-mail*", "mailNickname"),
+                ("Cargo", "jobTitle"),
+                ("Departamento", "department"),
+                ("Telefone", "mobilePhone"),
+            ]
+            vars_ = {}
+            frm = tk.Frame(dlg, bg=c["card"])
+            frm.pack(fill="both", expand=True, padx=20, pady=12)
+            for i, (lbl, key) in enumerate(fields):
+                tk.Label(frm, text=lbl, bg=c["card"], fg=c["muted"],
+                         font=("Segoe UI", 9), anchor="w").grid(row=i*2, column=0, sticky="w", pady=(6, 0))
+                v = tk.StringVar(value=(initial or {}).get(key, "") or "")
+                vars_[key] = v
+                ttk.Entry(frm, textvariable=v, width=38).grid(row=i*2+1, column=0, sticky="ew")
+            frm.columnconfigure(0, weight=1)
+
+            # Senha (só para novo usuário)
+            pw_var = None
+            if initial is None:
+                tk.Label(frm, text="Senha inicial*", bg=c["card"], fg=c["muted"],
+                         font=("Segoe UI", 9), anchor="w").grid(row=len(fields)*2, column=0, sticky="w", pady=(6, 0))
+                pw_var = tk.StringVar()
+                ttk.Entry(frm, textvariable=pw_var, show="•", width=38).grid(row=len(fields)*2+1, column=0, sticky="ew")
+
+            def _ok():
+                data = {k: v.get().strip() for k, v in vars_.items() if v.get().strip()}
+                required = ["displayName", "givenName", "surname", "userPrincipalName", "mailNickname"]
+                missing = [f for f in required if not data.get(f)]
+                if missing:
+                    messagebox.showwarning("Campos obrigatórios", "Preencha todos os campos marcados com *.", parent=dlg)
+                    return
+                if pw_var is not None:
+                    pw = pw_var.get().strip()
+                    if len(pw) < 8:
+                        messagebox.showwarning("Senha", "A senha precisa ter ao menos 8 caracteres.", parent=dlg)
+                        return
+                    data["passwordProfile"] = {"password": pw, "forceChangePasswordNextSignIn": True}
+                    data["accountEnabled"] = True
+                result[0] = data
+                dlg.destroy()
+
+            btn_f = ttk.Frame(dlg)
+            btn_f.pack(pady=(0, 16))
+            ttk.Button(btn_f, text="Salvar", style="Accent.TButton", command=_ok).pack(side="left", padx=4)
+            ttk.Button(btn_f, text="Cancelar", command=dlg.destroy).pack(side="left", padx=4)
+            dlg.wait_window()
+            return result[0]
+
+        def _editar():
+            u = _get_sel()
+            if not u: return
+            data = _user_form_dialog("Editar Usuário", initial=u)
+            if data is None: return
+            # Remove UPN e mailNickname da edição (não podem ser alterados facilmente)
+            data.pop("userPrincipalName", None)
+            data.pop("mailNickname", None)
+            def _do():
+                try:
+                    self._ms_update_user(u["id"], data)
+                    u.update(data)
+                    self.root.after(0, _refresh_tree)
+                    self.root.after(0, lambda: messagebox.showinfo("Microsoft",
+                        f"Usuário {u.get('displayName','')} atualizado com sucesso."))
+                except Exception as ex:
+                    self.root.after(0, lambda m=str(ex): messagebox.showerror("Erro", m))
+            _thr.Thread(target=_do, daemon=True).start()
+
+        def _novo_usuario():
+            data = _user_form_dialog("Novo Usuário")
+            if data is None: return
+            def _do():
+                try:
+                    novo = self._ms_create_user(data)
+                    self._ms_users.append(novo)
+                    self.root.after(0, _refresh_tree)
+                    nm = data.get("displayName", "")
+                    self.root.after(0, lambda: messagebox.showinfo("Microsoft",
+                        f"Usuário {nm} criado com sucesso."))
+                except Exception as ex:
+                    self.root.after(0, lambda m=str(ex): messagebox.showerror("Erro", m))
+            _thr.Thread(target=_do, daemon=True).start()
+
         # ── Barra de ações (acima da tabela) ─────────────────────────────
         act_row = ttk.Frame(tbl_card, style="Card.TFrame")
         act_row.pack(fill="x", pady=(4, 6))
+        ttk.Button(act_row, text="➕  Novo Usuário",
+                   command=_novo_usuario).pack(side="left", padx=(0, 8))
+        ttk.Button(act_row, text="✏️  Editar",
+                   command=_editar).pack(side="left", padx=(0, 8))
         ttk.Button(act_row, text="🔒  Bloquear / Desbloquear",
                    command=_bloquear).pack(side="left", padx=(0, 8))
         ttk.Button(act_row, text="🔑  Redefinir Senha",
                    command=_resetar_senha).pack(side="left", padx=(0, 8))
-        ttk.Button(act_row, text="🔄  Atualizar lista",
+        ttk.Button(act_row, text="🔄  Atualizar",
                    command=lambda: _thr.Thread(target=lambda: (
                        setattr(self, "_ms_users", self._ms_list_users()),
                        self.root.after(0, _refresh_tree)
@@ -2334,14 +2441,17 @@ class MacroLockAnalyzerApp:
 
         # ── Menu de contexto (clique direito) ────────────────────────────
         ctx_menu = tk.Menu(self._ms_tree, tearoff=0)
+        ctx_menu.add_command(label="✏️  Editar", command=_editar)
         ctx_menu.add_command(label="🔒  Bloquear / Desbloquear", command=_bloquear)
         ctx_menu.add_command(label="🔑  Redefinir Senha", command=_resetar_senha)
+        ctx_menu.add_separator()
+        ctx_menu.add_command(label="➕  Novo Usuário", command=_novo_usuario)
 
         def _show_ctx(event):
             row = self._ms_tree.identify_row(event.y)
             if row:
                 self._ms_tree.selection_set(row)
-                ctx_menu.post(event.x_root, event.y_root)
+            ctx_menu.post(event.x_root, event.y_root)
 
         self._ms_tree.bind("<Button-3>", _show_ctx)
 
