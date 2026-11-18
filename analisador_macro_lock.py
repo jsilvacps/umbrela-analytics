@@ -2347,77 +2347,184 @@ class MacroLockAnalyzerApp:
             ttk.Button(btn_f, text="Confirmar", style="Accent.TButton", command=_ok).pack(side="left", padx=4)
             ttk.Button(btn_f, text="Cancelar", command=dlg.destroy).pack(side="left", padx=4)
 
-        def _user_form_dialog(title: str, initial: dict = None):
-            """Abre dialog com campos de usuário. Retorna dict com os dados ou None se cancelado."""
+        def _slugify(name: str) -> str:
+            import unicodedata
+            nfkd = unicodedata.normalize("NFKD", name)
+            ascii_ = nfkd.encode("ascii", "ignore").decode("ascii")
+            parts = ascii_.lower().split()
+            if len(parts) >= 2:
+                return f"{parts[0]}.{parts[-1]}"
+            return parts[0] if parts else ""
+
+        def _novo_usuario():
             result = [None]
+            DOMAIN = "@dmsempresarial.com.br"
             dlg = tk.Toplevel(self.root)
-            dlg.title(title)
+            dlg.title("Novo Usuário")
             dlg.resizable(False, False)
             dlg.grab_set()
             dlg.configure(bg=c["card"])
-            dlg.geometry("420x520")
+            dlg.geometry("440x420")
 
-            fields = [
-                ("Nome completo*", "displayName"),
-                ("Nome (primeiro)*", "givenName"),
-                ("Sobrenome*", "surname"),
-                ("E-mail / UPN*", "userPrincipalName"),
-                ("Apelido de e-mail*", "mailNickname"),
-                ("Cargo", "jobTitle"),
-                ("Departamento", "department"),
-                ("Telefone", "mobilePhone"),
-            ]
-            vars_ = {}
             frm = tk.Frame(dlg, bg=c["card"])
             frm.pack(fill="both", expand=True, padx=20, pady=12)
-            for i, (lbl, key) in enumerate(fields):
-                tk.Label(frm, text=lbl, bg=c["card"], fg=c["muted"],
-                         font=("Segoe UI", 9), anchor="w").grid(row=i*2, column=0, sticky="w", pady=(6, 0))
-                v = tk.StringVar(value=(initial or {}).get(key, "") or "")
-                vars_[key] = v
-                ttk.Entry(frm, textvariable=v, width=38).grid(row=i*2+1, column=0, sticky="ew")
             frm.columnconfigure(0, weight=1)
 
-            # Senha (só para novo usuário)
-            pw_var = None
-            if initial is None:
-                tk.Label(frm, text="Senha inicial*", bg=c["card"], fg=c["muted"],
-                         font=("Segoe UI", 9), anchor="w").grid(row=len(fields)*2, column=0, sticky="w", pady=(6, 0))
-                pw_var = tk.StringVar()
-                ttk.Entry(frm, textvariable=pw_var, show="•", width=38).grid(row=len(fields)*2+1, column=0, sticky="ew")
+            def _lbl(text, row):
+                tk.Label(frm, text=text, bg=c["card"], fg=c["muted"],
+                         font=("Segoe UI", 9), anchor="w").grid(row=row, column=0, sticky="w", pady=(8, 0))
+
+            v_nome    = tk.StringVar()
+            v_upn     = tk.StringVar()
+            v_cargo   = tk.StringVar()
+            v_depto   = tk.StringVar()
+            v_email_p = tk.StringVar()
+            v_senha   = tk.StringVar()
+
+            _lbl("Nome de exibição*  (como aparece no e-mail, Teams, SharePoint)", 0)
+            ttk.Entry(frm, textvariable=v_nome, width=42).grid(row=1, column=0, sticky="ew")
+
+            _lbl("E-mail corporativo*", 2)
+            upn_entry = ttk.Entry(frm, textvariable=v_upn, width=42)
+            upn_entry.grid(row=3, column=0, sticky="ew")
+
+            _lbl("Cargo", 4)
+            ttk.Entry(frm, textvariable=v_cargo, width=42).grid(row=5, column=0, sticky="ew")
+
+            _lbl("Departamento", 6)
+            ttk.Entry(frm, textvariable=v_depto, width=42).grid(row=7, column=0, sticky="ew")
+
+            _lbl("E-mail pessoal  (recebe link de boas-vindas)", 8)
+            ttk.Entry(frm, textvariable=v_email_p, width=42).grid(row=9, column=0, sticky="ew")
+
+            _lbl("Senha inicial*  (mín. 8 chars, maiúscula, número e símbolo)", 10)
+            ttk.Entry(frm, textvariable=v_senha, show="•", width=42).grid(row=11, column=0, sticky="ew")
+
+            def _auto_upn(*_):
+                slug = _slugify(v_nome.get())
+                if slug:
+                    v_upn.set(slug + DOMAIN)
+            v_nome.trace_add("write", _auto_upn)
 
             def _ok():
-                data = {k: v.get().strip() for k, v in vars_.items() if v.get().strip()}
-                required = ["displayName", "givenName", "surname", "userPrincipalName", "mailNickname"]
-                missing = [f for f in required if not data.get(f)]
-                if missing:
-                    messagebox.showwarning("Campos obrigatórios", "Preencha todos os campos marcados com *.", parent=dlg)
+                nome = v_nome.get().strip()
+                upn  = v_upn.get().strip()
+                pw   = v_senha.get().strip()
+                if not nome or not upn:
+                    messagebox.showwarning("Campos obrigatórios", "Nome de exibição e E-mail são obrigatórios.", parent=dlg)
                     return
-                if pw_var is not None:
-                    pw = pw_var.get().strip()
-                    if len(pw) < 8:
-                        messagebox.showwarning("Senha", "A senha precisa ter ao menos 8 caracteres.", parent=dlg)
-                        return
-                    data["passwordProfile"] = {"password": pw, "forceChangePasswordNextSignIn": True}
-                    data["accountEnabled"] = True
-                result[0] = data
+                if len(pw) < 8:
+                    messagebox.showwarning("Senha", "A senha precisa ter ao menos 8 caracteres.", parent=dlg)
+                    return
+                slug = upn.split("@")[0]
+                data = {
+                    "displayName": nome,
+                    "givenName": nome.split()[0] if nome.split() else nome,
+                    "surname": nome.split()[-1] if len(nome.split()) > 1 else "",
+                    "userPrincipalName": upn,
+                    "mailNickname": slug,
+                    "accountEnabled": True,
+                    "passwordProfile": {"password": pw, "forceChangePasswordNextSignIn": True},
+                }
+                if v_cargo.get().strip():  data["jobTitle"]    = v_cargo.get().strip()
+                if v_depto.get().strip():  data["department"]  = v_depto.get().strip()
+                result[0] = (data, v_email_p.get().strip())
                 dlg.destroy()
 
             btn_f = ttk.Frame(dlg)
-            btn_f.pack(pady=(0, 16))
-            ttk.Button(btn_f, text="Salvar", style="Accent.TButton", command=_ok).pack(side="left", padx=4)
+            btn_f.pack(pady=(4, 16))
+            ttk.Button(btn_f, text="Criar usuário", style="Accent.TButton", command=_ok).pack(side="left", padx=4)
             ttk.Button(btn_f, text="Cancelar", command=dlg.destroy).pack(side="left", padx=4)
             dlg.wait_window()
-            return result[0]
+            if result[0] is None:
+                return
+            user_data, email_pessoal = result[0]
+
+            def _do():
+                try:
+                    novo = self._ms_create_user(user_data)
+                    self._ms_users.append(novo)
+                    self.root.after(0, _refresh_tree)
+                    nm  = user_data["displayName"]
+                    upn = user_data["userPrincipalName"]
+                    # Enviar e-mail de boas-vindas se e-mail pessoal informado
+                    if email_pessoal:
+                        try:
+                            admin_id = self._ms_email.get().strip()
+                            html_body = (
+                                f"<p>Olá, <b>{nm}</b>!</p>"
+                                f"<p>Sua conta corporativa foi criada com sucesso.</p>"
+                                f"<p><b>E-mail de acesso:</b> {upn}</p>"
+                                f"<p>Acesse o link abaixo para definir sua senha e ativar sua conta:</p>"
+                                f'<p><a href="https://aka.ms/sspr">https://aka.ms/sspr</a></p>'
+                                f"<p>Equipe DMS Empresarial</p>"
+                            )
+                            self._ms_graph("POST", f"/users/{admin_id}/sendMail", json={
+                                "message": {
+                                    "subject": f"Bem-vindo(a) à DMS Empresarial — {nm}",
+                                    "body": {"contentType": "HTML", "content": html_body},
+                                    "toRecipients": [{"emailAddress": {"address": email_pessoal}}],
+                                },
+                                "saveToSentItems": True,
+                            })
+                            self.root.after(0, lambda: messagebox.showinfo("Microsoft",
+                                f"Usuário {nm} criado!\nE-mail de boas-vindas enviado para {email_pessoal}."))
+                        except Exception:
+                            self.root.after(0, lambda: messagebox.showinfo("Microsoft",
+                                f"Usuário {nm} criado!\n(Não foi possível enviar o e-mail de boas-vindas.)"))
+                    else:
+                        self.root.after(0, lambda: messagebox.showinfo("Microsoft",
+                            f"Usuário {nm} criado com sucesso."))
+                except Exception as ex:
+                    self.root.after(0, lambda m=str(ex): messagebox.showerror("Erro", m))
+            _thr.Thread(target=_do, daemon=True).start()
 
         def _editar():
             u = _get_sel()
             if not u: return
-            data = _user_form_dialog("Editar Usuário", initial=u)
-            if data is None: return
-            # Remove UPN e mailNickname da edição (não podem ser alterados facilmente)
-            data.pop("userPrincipalName", None)
-            data.pop("mailNickname", None)
+            result = [None]
+            dlg = tk.Toplevel(self.root)
+            dlg.title(f"Editar — {u.get('displayName','')}")
+            dlg.resizable(False, False)
+            dlg.grab_set()
+            dlg.configure(bg=c["card"])
+            dlg.geometry("440x280")
+
+            frm = tk.Frame(dlg, bg=c["card"])
+            frm.pack(fill="both", expand=True, padx=20, pady=12)
+            frm.columnconfigure(0, weight=1)
+
+            def _lbl2(text, row):
+                tk.Label(frm, text=text, bg=c["card"], fg=c["muted"],
+                         font=("Segoe UI", 9), anchor="w").grid(row=row, column=0, sticky="w", pady=(8, 0))
+
+            v_nome  = tk.StringVar(value=u.get("displayName", ""))
+            v_cargo = tk.StringVar(value=u.get("jobTitle", "") or "")
+            v_depto = tk.StringVar(value=u.get("department", "") or "")
+
+            _lbl2("Nome de exibição*", 0)
+            ttk.Entry(frm, textvariable=v_nome, width=42).grid(row=1, column=0, sticky="ew")
+            _lbl2("Cargo", 2)
+            ttk.Entry(frm, textvariable=v_cargo, width=42).grid(row=3, column=0, sticky="ew")
+            _lbl2("Departamento", 4)
+            ttk.Entry(frm, textvariable=v_depto, width=42).grid(row=5, column=0, sticky="ew")
+
+            def _ok():
+                nome = v_nome.get().strip()
+                if not nome:
+                    messagebox.showwarning("Obrigatório", "Nome de exibição é obrigatório.", parent=dlg)
+                    return
+                result[0] = {"displayName": nome, "jobTitle": v_cargo.get().strip(),
+                             "department": v_depto.get().strip()}
+                dlg.destroy()
+
+            btn_f = ttk.Frame(dlg)
+            btn_f.pack(pady=(4, 16))
+            ttk.Button(btn_f, text="Salvar", style="Accent.TButton", command=_ok).pack(side="left", padx=4)
+            ttk.Button(btn_f, text="Cancelar", command=dlg.destroy).pack(side="left", padx=4)
+            dlg.wait_window()
+            if result[0] is None: return
+            data = result[0]
             def _do():
                 try:
                     self._ms_update_user(u["id"], data)
@@ -2425,21 +2532,6 @@ class MacroLockAnalyzerApp:
                     self.root.after(0, _refresh_tree)
                     self.root.after(0, lambda: messagebox.showinfo("Microsoft",
                         f"Usuário {u.get('displayName','')} atualizado com sucesso."))
-                except Exception as ex:
-                    self.root.after(0, lambda m=str(ex): messagebox.showerror("Erro", m))
-            _thr.Thread(target=_do, daemon=True).start()
-
-        def _novo_usuario():
-            data = _user_form_dialog("Novo Usuário")
-            if data is None: return
-            def _do():
-                try:
-                    novo = self._ms_create_user(data)
-                    self._ms_users.append(novo)
-                    self.root.after(0, _refresh_tree)
-                    nm = data.get("displayName", "")
-                    self.root.after(0, lambda: messagebox.showinfo("Microsoft",
-                        f"Usuário {nm} criado com sucesso."))
                 except Exception as ex:
                     self.root.after(0, lambda m=str(ex): messagebox.showerror("Erro", m))
             _thr.Thread(target=_do, daemon=True).start()
