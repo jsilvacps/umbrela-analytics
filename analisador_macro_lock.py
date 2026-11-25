@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "Umbrela Analytics"
-APP_VERSION = "8.68"
+APP_VERSION = "8.69"
 GITHUB_REPO = "jsilvacps/umbrela-analytics"   # repositório público de releases
 DEFAULT_EXCLUDE = "OFFLINE, [LOCK.OFFLINE], [LOCK.LOGIN], LOGIN, LOGOUT"
 LOGO_FILE = "logo_umbrela_analytics.png"
@@ -4074,111 +4074,78 @@ class MacroLockAnalyzerApp:
             except Exception:
                 pass
 
-        # ── Mosaico principal ─────────────────────────────────────────────────
-        outer = tk.Frame(parent, bg=c["bg"])
-        outer.pack(fill="both", expand=True)
-
-        canvas = tk.Canvas(outer, bg=c["bg"], highlightthickness=0)
-        vsb = tk.Scrollbar(outer, orient="vertical", command=canvas.yview)
-        canvas.configure(yscrollcommand=vsb.set)
-        vsb.pack(side="right", fill="y")
-        canvas.pack(side="left", fill="both", expand=True)
-
-        scroll = tk.Frame(canvas, bg=c["bg"])
-        scroll_win = canvas.create_window((0, 0), window=scroll, anchor="nw")
-
-        def _on_scroll_resize(e):
-            canvas.itemconfig(scroll_win, width=e.width)
-        canvas.bind("<Configure>", _on_scroll_resize)
-        scroll.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.bind_all("<MouseWheel>", lambda e: canvas.yview_scroll(int(-1*(e.delta/120)), "units"))
-
-        title_row = tk.Frame(scroll, bg=c["bg"])
-        title_row.pack(fill="x", padx=20, pady=(16, 4))
-        tk.Label(title_row, text="Inventário TI — DMS", bg=c["bg"],
-                 fg=c["text"], font=("Segoe UI", 13, "bold")).pack(side="left")
-        tk.Label(title_row, text="Selecione uma funcionalidade", bg=c["bg"],
-                 fg=c["muted"], font=("Segoe UI", 10)).pack(side="left", padx=12)
-
-        grid = tk.Frame(scroll, bg=c["bg"])
-        grid.pack(fill="both", expand=True, padx=16, pady=8)
-
-        COLS = 4
-        mosaic_items = [
-            ("📊", "Dashboard",          "Resumo geral de equipamentos e custos"),
-            ("🖥️", "Equipamentos",        "Ver e filtrar todos os equipamentos"),
-            ("➕", "Cadastro / Edição",   "Registrar ou editar equipamentos"),
-            ("🤖", "Importação IA",       "Importar inventário via planilha ou IA"),
-            ("📋", "Relatórios",          "Relatórios detalhados e exportação"),
-            ("💰", "Financeiro",          "Custos, aluguéis e contratos"),
-            ("🏭", "Fornecedores",        "Gestão de fornecedores e contratos"),
-            ("💸", "Reembolsos",          "Controle de reembolsos e despesas"),
-            ("👥", "Funcionários",        "Colaboradores e alocação de equipamentos"),
-            ("🔐", "Usuários /\nPermissões", "Controle de acesso ao sistema"),
-            ("📄", "Termos de\nResponsabilidade", "Termos assinados por funcionários"),
-            ("🕒", "Histórico\nde Uso",   "Rastrear movimentações de equipamentos"),
+        # ── Layout principal: sidebar + painel ───────────────────────────────
+        SIDEBAR_W = 200
+        SIDEBAR_BG = "#0d1117"
+        NAV_ITEMS = [
+            ("📊", "Dashboard"),
+            ("🖥️", "Equipamentos"),
+            ("➕", "Cadastro"),
+            ("🤖", "Importação IA"),
+            ("📋", "Relatórios"),
+            ("💰", "Financeiro"),
+            ("🏭", "Fornecedores"),
+            ("💸", "Reembolsos"),
+            ("👥", "Funcionários"),
+            ("🔐", "Usuários"),
+            ("📄", "Termos"),
+            ("🕒", "Histórico"),
         ]
 
-        def _card_btn(parent, icon, title, subtitle, cmd):
-            frame = tk.Frame(parent, bg=c["card"], cursor="hand2",
-                             highlightthickness=1, highlightbackground=c["border2"])
-            frame.configure(width=190, height=155)
-            frame.pack_propagate(False)
-            inner = tk.Frame(frame, bg=c["card"], padx=12, pady=12)
-            inner.pack(fill="both", expand=True)
-            tk.Label(inner, text=icon, bg=c["card"], fg=c["text"],
-                     font=("Segoe UI", 26)).pack()
-            tk.Label(inner, text=title, bg=c["card"], fg=c["text"],
-                     font=("Segoe UI", 9, "bold"), justify="center").pack(pady=(4, 2))
-            tk.Label(inner, text=subtitle, bg=c["card"], fg=c["muted"],
-                     font=("Segoe UI", 7), wraplength=165, justify="center").pack()
-            for w in (frame, inner) + tuple(inner.winfo_children()):
-                w.bind("<Button-1>", lambda e, f=cmd: f())
-                w.bind("<Enter>", lambda e, f=frame: f.configure(highlightbackground=c["teal"]))
-                w.bind("<Leave>", lambda e, f=frame: f.configure(highlightbackground=c["border2"]))
-            return frame
+        root_frame = tk.Frame(parent, bg=c["bg"])
+        root_frame.pack(fill="both", expand=True)
 
-        _card_actions = [
-            lambda: _modal_dashboard(),
-            lambda: _modal_equipamentos(),
-            lambda: _modal_cadastro(),
-            lambda: _modal_importacao_ia(),
-            lambda: _modal_relatorios(),
-            lambda: _modal_financeiro(),
-            lambda: _modal_fornecedores(),
-            lambda: _modal_reembolsos(),
-            lambda: _modal_funcionarios(),
-            lambda: _modal_usuarios(),
-            lambda: _modal_termos(),
-            lambda: _modal_historico_geral(),
-        ]
+        # Sidebar
+        sidebar = tk.Frame(root_frame, bg=SIDEBAR_BG, width=SIDEBAR_W)
+        sidebar.pack(side="left", fill="y")
+        sidebar.pack_propagate(False)
 
-        for idx, (icon, title, sub) in enumerate(mosaic_items):
-            row_i = idx // COLS
-            col_i = idx % COLS
-            _card_btn(grid, icon, title, sub, _card_actions[idx]).grid(
-                row=row_i, column=col_i, padx=8, pady=8, sticky="nsew")
-        for ci in range(COLS):
-            grid.columnconfigure(ci, weight=1)
+        tk.Label(sidebar, text="Inventário TI", bg=SIDEBAR_BG, fg="#ffffff",
+                 font=("Segoe UI", 11, "bold"), padx=16, pady=18).pack(anchor="w")
+        tk.Frame(sidebar, bg=c["border2"], height=1).pack(fill="x", padx=12)
 
-        # ── Helper: modal genérico de tabela ──────────────────────────────────
-        def _modal_tabela(titulo, icone, tabela, colunas_label):
-            win = tk.Toplevel(self.root)
-            win.title(titulo)
-            win.geometry("860x520")
-            win.configure(bg=c["bg"])
-            win.transient(self.root)
-            win.grab_set()
+        # Painel de conteúdo
+        content = tk.Frame(root_frame, bg=c["bg"])
+        content.pack(side="left", fill="both", expand=True)
 
-            top = tk.Frame(win, bg=c["bg"], padx=20, pady=14)
+        _current_panel = [None]
+        _nav_btns = {}
+
+        def _show_panel(builder_fn, key):
+            # destacar item ativo
+            for k, btn in _nav_btns.items():
+                btn.configure(bg=SIDEBAR_BG, fg="#aaaaaa")
+            if key in _nav_btns:
+                _nav_btns[key].configure(bg="#1a2332", fg="#ffffff")
+            # destruir painel anterior
+            if _current_panel[0]:
+                _current_panel[0].destroy()
+            panel = tk.Frame(content, bg=c["bg"])
+            panel.pack(fill="both", expand=True)
+            _current_panel[0] = panel
+            builder_fn(panel)
+
+        def _nav_btn(icon, label, key, builder_fn):
+            f = tk.Frame(sidebar, bg=SIDEBAR_BG, cursor="hand2")
+            f.pack(fill="x")
+            btn = tk.Label(f, text=f"  {icon}  {label}", bg=SIDEBAR_BG, fg="#aaaaaa",
+                           font=("Segoe UI", 9), anchor="w", padx=8, pady=10)
+            btn.pack(fill="x")
+            _nav_btns[key] = btn
+            cmd = lambda k=key, fn=builder_fn: _show_panel(fn, k)
+            for w in (f, btn):
+                w.bind("<Button-1>", lambda e, fn=cmd: fn())
+                w.bind("<Enter>", lambda e, b=btn: b.configure(fg="#ffffff") if b.cget("bg") == SIDEBAR_BG else None)
+                w.bind("<Leave>", lambda e, b=btn: b.configure(fg="#aaaaaa") if b.cget("bg") == SIDEBAR_BG else None)
+
+        # ── Helper: painel de tabela genérico embutido ───────────────────────
+        def _build_tabela_panel(panel, titulo, icone, tabela, colunas_label, reload_ref=None):
+            top = tk.Frame(panel, bg=c["bg"], padx=20, pady=14)
             top.pack(fill="x")
             tk.Label(top, text=f"{icone}  {titulo}", bg=c["bg"], fg=c["text"],
                      font=("Segoe UI", 13, "bold")).pack(side="left")
-            tk.Button(top, text="⟳ Atualizar", bg=c["teal"], fg="#fff",
-                      relief="flat", padx=10, pady=4, command=lambda: _load()).pack(side="right")
 
-            # search
-            sf = tk.Frame(win, bg=c["bg"], padx=20)
+            sf = tk.Frame(panel, bg=c["bg"], padx=20)
             sf.pack(fill="x", pady=(0, 6))
             sv = tk.StringVar()
             sv.trace_add("write", lambda *_: _apply_filter())
@@ -4187,43 +4154,43 @@ class MacroLockAnalyzerApp:
             tk.Entry(sf, textvariable=sv, bg=c["card"], fg=c["text"],
                      insertbackground=c["text"], relief="flat",
                      font=("Segoe UI", 10)).pack(side="left", padx=8, fill="x", expand=True)
+            tk.Button(sf, text="⟳", bg=c["teal"], fg="#fff", relief="flat",
+                      padx=8, pady=2, command=lambda: _thr.Thread(target=_load, daemon=True).start()
+                      ).pack(side="left")
 
-            # treeview
-            frm = tk.Frame(win, bg=c["bg"], padx=20)
-            frm.pack(fill="both", expand=True, pady=(0, 12))
+            frm = tk.Frame(panel, bg=c["bg"], padx=20)
+            frm.pack(fill="both", expand=True, pady=(0, 8))
             style = ttk.Style()
             style.configure("DMS.Treeview", background=c["card"], foreground=c["text"],
                             fieldbackground=c["card"], rowheight=26)
             style.configure("DMS.Treeview.Heading", background=c["card"],
                             foreground=c["muted"], font=("Segoe UI", 9, "bold"))
             cols = list(colunas_label.keys())
-            tv = ttk.Treeview(frm, columns=cols, show="headings",
-                              style="DMS.Treeview")
+            tv = ttk.Treeview(frm, columns=cols, show="headings", style="DMS.Treeview")
             for col_key in cols:
                 tv.heading(col_key, text=colunas_label[col_key])
                 tv.column(col_key, width=120, minwidth=60)
-            sb = tk.Scrollbar(frm, orient="vertical", command=tv.yview)
-            tv.configure(yscrollcommand=sb.set)
-            sb.pack(side="right", fill="y")
+            sb2 = tk.Scrollbar(frm, orient="vertical", command=tv.yview)
+            tv.configure(yscrollcommand=sb2.set)
+            sb2.pack(side="right", fill="y")
             tv.pack(fill="both", expand=True)
 
-            status_lbl = tk.Label(win, text="", bg=c["bg"], fg=c["muted"],
+            status_lbl = tk.Label(panel, text="Carregando…", bg=c["bg"], fg=c["muted"],
                                   font=("Segoe UI", 9))
-            status_lbl.pack(pady=(0, 8))
+            status_lbl.pack(pady=(0, 6))
 
             _rows = []
 
             def _load():
-                status_lbl.config(text="Carregando…")
-                win.update_idletasks()
+                panel.after(0, lambda: status_lbl.config(text="Carregando…"))
                 try:
                     data = _supa_get(tabela)
                     _rows.clear()
                     _rows.extend(data)
-                    _apply_filter()
-                    status_lbl.config(text=f"{len(data)} registros")
+                    panel.after(0, lambda: (_apply_filter(),
+                                            status_lbl.config(text=f"{len(data)} registros")))
                 except Exception as ex:
-                    status_lbl.config(text=f"Erro: {ex}")
+                    panel.after(0, lambda: status_lbl.config(text=f"Erro: {ex}"))
 
             def _apply_filter():
                 q = sv.get().lower()
@@ -4234,205 +4201,111 @@ class MacroLockAnalyzerApp:
                     if q == "" or any(q in v.lower() for v in vals):
                         tv.insert("", "end", values=vals)
 
+            if reload_ref is not None:
+                reload_ref.append(_load)
             _thr.Thread(target=_load, daemon=True).start()
 
-        # ── Modal Dashboard ────────────────────────────────────────────────────
-        def _modal_dashboard():
-            win = tk.Toplevel(self.root)
-            win.title("Dashboard — Inventário TI")
-            win.geometry("860x540")
-            win.configure(bg=c["bg"])
-            win.transient(self.root)
-            win.grab_set()
-
-            top = tk.Frame(win, bg=c["bg"], padx=20, pady=14)
+        # ── Painel Dashboard ──────────────────────────────────────────────────
+        def _build_dashboard(panel):
+            top = tk.Frame(panel, bg=c["bg"], padx=20, pady=14)
             top.pack(fill="x")
             tk.Label(top, text="📊  Dashboard — Inventário TI", bg=c["bg"],
                      fg=c["text"], font=("Segoe UI", 13, "bold")).pack(side="left")
             tk.Button(top, text="⟳ Atualizar", bg=c["teal"], fg="#fff",
-                      relief="flat", padx=10, pady=4, command=lambda: _load_dash()).pack(side="right")
+                      relief="flat", padx=10, pady=4,
+                      command=lambda: _thr.Thread(target=_load_dash, daemon=True).start()
+                      ).pack(side="right")
 
-            cards_frame = tk.Frame(win, bg=c["bg"], padx=20)
+            cards_frame = tk.Frame(panel, bg=c["bg"], padx=20)
             cards_frame.pack(fill="x", pady=10)
-
             stat_labels = {}
-            for i, (key, lbl, default) in enumerate([
-                ("total", "Total de Equipamentos", "—"),
-                ("ativos", "Ativos", "—"),
-                ("alugados", "Alugados", "—"),
-                ("custo", "Custo Mensal Total", "—"),
+            for i, (key, lbl) in enumerate([
+                ("total", "Total de Equipamentos"),
+                ("ativos", "Ativos"),
+                ("alugados", "Alugados"),
+                ("custo", "Custo Mensal Total"),
             ]):
-                f = tk.Frame(cards_frame, bg=c["card"], padx=20, pady=14,
+                f = tk.Frame(cards_frame, bg=c["card"], padx=20, pady=18,
                              highlightthickness=1, highlightbackground=c["border2"])
                 f.grid(row=0, column=i, padx=8, sticky="nsew")
                 tk.Label(f, text=lbl, bg=c["card"], fg=c["muted"],
                          font=("Segoe UI", 8)).pack()
-                lv = tk.Label(f, text=default, bg=c["card"], fg=c["teal"],
-                              font=("Segoe UI", 16, "bold"))
-                lv.pack()
+                lv = tk.Label(f, text="—", bg=c["card"], fg=c["teal"],
+                              font=("Segoe UI", 20, "bold"))
+                lv.pack(pady=(4, 0))
                 stat_labels[key] = lv
                 cards_frame.columnconfigure(i, weight=1)
 
-            status_lbl = tk.Label(win, text="", bg=c["bg"], fg=c["muted"],
+            status_lbl = tk.Label(panel, text="", bg=c["bg"], fg=c["muted"],
                                   font=("Segoe UI", 9))
-            status_lbl.pack()
+            status_lbl.pack(pady=4)
 
             def _load_dash():
-                status_lbl.config(text="Carregando…")
-                win.update_idletasks()
+                panel.after(0, lambda: status_lbl.config(text="Carregando…"))
                 try:
                     equips = _supa_get("equipamentos")
                     total = len(equips)
-                    ativos = sum(1 for e in equips if str(e.get("status","")).lower() in ("ativo","em uso",""))
-                    alugados = sum(1 for e in equips if str(e.get("tipo_aquisicao","")).lower() == "alugado")
+                    ativos = sum(1 for e in equips
+                                 if str(e.get("status","")).lower() in ("ativo","em uso",""))
+                    alugados = sum(1 for e in equips
+                                   if str(e.get("tipo_aquisicao","")).lower() == "alugado")
                     custo = sum(float(e.get("valor_mensal") or 0) for e in equips)
-                    stat_labels["total"].config(text=str(total))
-                    stat_labels["ativos"].config(text=str(ativos))
-                    stat_labels["alugados"].config(text=str(alugados))
-                    stat_labels["custo"].config(text=f"R$ {custo:,.2f}".replace(",","X").replace(".",",").replace("X","."))
-                    status_lbl.config(text=f"{total} equipamentos carregados")
+                    fmt_custo = f"R$ {custo:,.2f}".replace(",","X").replace(".",",").replace("X",".")
+                    def _upd():
+                        stat_labels["total"].config(text=str(total))
+                        stat_labels["ativos"].config(text=str(ativos))
+                        stat_labels["alugados"].config(text=str(alugados))
+                        stat_labels["custo"].config(text=fmt_custo)
+                        status_lbl.config(text=f"{total} equipamentos carregados")
+                    panel.after(0, _upd)
                 except Exception as ex:
-                    status_lbl.config(text=f"Erro: {ex}")
+                    panel.after(0, lambda: status_lbl.config(text=f"Erro: {ex}"))
 
             _thr.Thread(target=_load_dash, daemon=True).start()
 
-        # ── Modal Importação IA ────────────────────────────────────────────────
-        def _modal_importacao_ia():
-            win = tk.Toplevel(self.root)
-            win.title("Importação IA")
-            win.geometry("700x420")
-            win.configure(bg=c["bg"])
-            win.transient(self.root)
-            win.grab_set()
-
-            tk.Label(win, text="🤖  Importação IA", bg=c["bg"], fg=c["text"],
-                     font=("Segoe UI", 13, "bold"), padx=20, pady=14).pack(anchor="w")
-            tk.Label(win, text="Cole abaixo os dados copiados de uma planilha ou relatório.\n"
-                     "O sistema identificará os campos automaticamente.", bg=c["bg"],
-                     fg=c["muted"], font=("Segoe UI", 9), padx=20, justify="left").pack(anchor="w")
-
-            txt = tk.Text(win, bg=c["card"], fg=c["text"], insertbackground=c["text"],
-                          relief="flat", font=("Consolas", 9), padx=10, pady=10)
-            txt.pack(fill="both", expand=True, padx=20, pady=10)
-
-            status_lbl = tk.Label(win, text="", bg=c["bg"], fg=c["muted"],
-                                  font=("Segoe UI", 9))
-            status_lbl.pack()
-
-            def _importar():
-                raw = txt.get("1.0", "end").strip()
-                if not raw:
-                    status_lbl.config(text="Cole os dados antes de importar.")
-                    return
-                linhas = [l for l in raw.splitlines() if l.strip()]
-                if len(linhas) < 2:
-                    status_lbl.config(text="Dados insuficientes (mín. cabeçalho + 1 linha).")
-                    return
-                status_lbl.config(text="Processando…")
-                win.update_idletasks()
-                headers = [h.strip().lower().replace(" ", "_") for h in linhas[0].split("\t")]
-                ok = 0
-                erros = 0
-                for linha in linhas[1:]:
-                    vals = linha.split("\t")
-                    registro = {headers[i]: vals[i].strip() for i in range(min(len(headers), len(vals)))}
-                    try:
-                        _supa_post("equipamentos", registro)
-                        ok += 1
-                    except Exception:
-                        erros += 1
-                status_lbl.config(text=f"Importados: {ok} | Erros: {erros}")
-
-            tk.Button(win, text="📥 Importar", bg=c["teal"], fg="#fff",
-                      relief="flat", padx=16, pady=6,
-                      command=lambda: _thr.Thread(target=_importar, daemon=True).start()
-                      ).pack(pady=(0, 16))
-
-        # ── Modais tabela simples ──────────────────────────────────────────────
-        def _modal_relatorios():
-            _modal_tabela("Relatórios", "📋", "relatorios",
-                          {"id": "ID", "nome": "Nome", "tipo": "Tipo",
-                           "criado_em": "Criado em", "status": "Status"})
-
-        def _modal_financeiro():
-            _modal_tabela("Financeiro", "💰", "financeiro",
-                          {"id": "ID", "descricao": "Descrição", "tipo": "Tipo",
-                           "valor": "Valor (R$)", "vencimento": "Vencimento",
-                           "fornecedor": "Fornecedor"})
-
-        def _modal_fornecedores():
-            _modal_tabela("Fornecedores", "🏭", "fornecedores",
-                          {"id": "ID", "nome": "Nome", "cnpj": "CNPJ",
-                           "contato": "Contato", "email": "E-mail",
-                           "telefone": "Telefone"})
-
-        def _modal_reembolsos():
-            _modal_tabela("Reembolsos", "💸", "reembolsos",
-                          {"id": "ID", "funcionario": "Funcionário",
-                           "descricao": "Descrição", "valor": "Valor (R$)",
-                           "data": "Data", "status": "Status"})
-
-        def _modal_funcionarios():
-            _modal_tabela("Funcionários", "👥", "funcionarios",
-                          {"id": "ID", "nome": "Nome", "departamento": "Departamento",
-                           "cargo": "Cargo", "email": "E-mail", "status": "Status"})
-
-        def _modal_usuarios():
-            _modal_tabela("Usuários / Permissões", "🔐", "usuarios",
-                          {"id": "ID", "nome": "Nome", "email": "E-mail",
-                           "perfil": "Perfil", "ativo": "Ativo"})
-
-        def _modal_termos():
-            _modal_tabela("Termos de Responsabilidade", "📄", "termos_responsabilidade",
-                          {"id": "ID", "funcionario": "Funcionário",
-                           "equipamento": "Equipamento",
-                           "data_assinatura": "Assinatura", "status": "Status"})
-
-        # ── Modal Equipamentos em Uso ─────────────────────────────────────────
-        def _modal_equipamentos():
-            win = tk.Toplevel(self.root)
-            win.title("Equipamentos em Uso")
-            win.geometry("900x560")
-            win.configure(bg=c["bg"])
-            win.transient(self.root)
-            win.grab_set()
-
-            top = tk.Frame(win, bg=c["bg"], padx=20, pady=14)
+        # ── Painel Equipamentos ───────────────────────────────────────────────
+        def _build_equipamentos(panel):
+            top = tk.Frame(panel, bg=c["bg"], padx=20, pady=14)
             top.pack(fill="x")
-            tk.Label(top, text="🖥️  Equipamentos em Uso", bg=c["bg"], fg=c["text"],
+            tk.Label(top, text="🖥️  Equipamentos", bg=c["bg"], fg=c["text"],
                      font=("Segoe UI", 13, "bold")).pack(side="left")
             tk.Button(top, text="⟳ Atualizar", bg=c["teal"], fg="#fff",
                       relief="flat", padx=10, pady=4,
                       command=lambda: _load()).pack(side="right")
+            tk.Button(top, text="➕ Novo", bg=c["card"], fg=c["text"],
+                      relief="flat", padx=10, pady=4,
+                      command=lambda: _modal_cadastro()).pack(side="right", padx=(0, 8))
 
-            # Filtro
-            filt_row = tk.Frame(win, bg=c["bg"], padx=20)
+            filt_row = tk.Frame(panel, bg=c["bg"], padx=20)
             filt_row.pack(fill="x", pady=(0, 8))
             tk.Label(filt_row, text="Filtrar:", bg=c["bg"], fg=c["muted"],
                      font=("Segoe UI", 9)).pack(side="left")
             filt_var = tk.StringVar()
-            filt_entry = tk.Entry(filt_row, textvariable=filt_var, bg=c["card"],
-                                  fg=c["text"], insertbackground=c["text"], relief="flat",
-                                  font=("Segoe UI", 10))
-            filt_entry.pack(side="left", padx=8, fill="x", expand=True)
+            tk.Entry(filt_row, textvariable=filt_var, bg=c["card"], fg=c["text"],
+                     insertbackground=c["text"], relief="flat",
+                     font=("Segoe UI", 10)).pack(side="left", padx=8, fill="x", expand=True)
 
             cols = ("Patrimônio", "Nome", "Categoria", "Usuário", "Status", "Data Aquisição")
-            import tkinter.ttk as _ttk2
-            style2 = _ttk2.Style()
+            frm = tk.Frame(panel, bg=c["bg"], padx=20)
+            frm.pack(fill="both", expand=True)
+            style2 = ttk.Style()
             style2.configure("Inv.Treeview", background=c["card"], foreground=c["text"],
                              fieldbackground=c["card"], rowheight=26)
             style2.configure("Inv.Treeview.Heading", background=c["border"],
                              foreground=c["muted"], font=("Segoe UI", 9, "bold"))
-            tree = _ttk2.Treeview(win, columns=cols, show="headings",
-                                  style="Inv.Treeview", selectmode="browse")
-            widths = [110, 220, 110, 160, 80, 110]
-            for col_n, w in zip(cols, widths):
+            tree = ttk.Treeview(frm, columns=cols, show="headings",
+                                style="Inv.Treeview", selectmode="browse")
+            for col_n, w in zip(cols, [110, 220, 110, 160, 80, 110]):
                 tree.heading(col_n, text=col_n)
                 tree.column(col_n, width=w, anchor="w")
-            vsb = _ttk2.Scrollbar(win, orient="vertical", command=tree.yview)
-            tree.configure(yscrollcommand=vsb.set)
-            tree.pack(side="left", fill="both", expand=True, padx=(20, 0), pady=(0, 10))
-            vsb.pack(side="left", fill="y", pady=(0, 10))
+            vsb2 = ttk.Scrollbar(frm, orient="vertical", command=tree.yview)
+            tree.configure(yscrollcommand=vsb2.set)
+            vsb2.pack(side="right", fill="y")
+            tree.pack(fill="both", expand=True)
+
+            status_lbl = tk.Label(panel, text="Carregando...", bg=c["bg"], fg=c["muted"],
+                                  font=("Segoe UI", 9))
+            status_lbl.pack(pady=4)
 
             _all_rows = []
 
@@ -4448,49 +4321,215 @@ class MacroLockAnalyzerApp:
                     dt   = (r.get("data_aquisicao") or "")[:10]
                     if q and q not in f"{pat} {nome} {cat} {usr} {sta}".lower():
                         continue
-                    tree.insert("", "end", iid=r.get("id",""), values=(pat, nome, cat, usr, sta, dt))
+                    tree.insert("", "end", iid=str(r.get("id","")), values=(pat, nome, cat, usr, sta, dt))
 
             filt_var.trace_add("write", lambda *_: _populate(_all_rows))
 
-            status_lbl = tk.Label(win, text="Carregando...", bg=c["bg"], fg=c["muted"],
-                                  font=("Segoe UI", 9))
-            status_lbl.pack(pady=4)
-
             def _load():
-                status_lbl.configure(text="Carregando...")
-                def _fetch():
-                    try:
-                        rows = _supa_get("equipamentos", {
-                            "status": "neq.Baixado",
-                            "order": "nome.asc",
-                            "select": "id,nome,patrimonio,patrimonio_auto,categoria,nome_usuario,status,data_aquisicao"
-                        })
-                        _all_rows.clear()
-                        _all_rows.extend(rows)
-                        win.after(0, lambda: (_populate(rows),
-                                              status_lbl.configure(text=f"{len(rows)} equipamentos")))
-                    except Exception as ex:
-                        win.after(0, lambda: status_lbl.configure(text=f"Erro: {ex}"))
-                _thr.Thread(target=_fetch, daemon=True).start()
-            _load()
+                panel.after(0, lambda: status_lbl.configure(text="Carregando..."))
+                try:
+                    rows = _supa_get("equipamentos", {
+                        "status": "neq.Baixado",
+                        "order": "nome.asc",
+                        "select": "id,nome,patrimonio,patrimonio_auto,categoria,nome_usuario,status,data_aquisicao"
+                    })
+                    _all_rows.clear()
+                    _all_rows.extend(rows)
+                    panel.after(0, lambda: (_populate(rows),
+                                            status_lbl.configure(text=f"{len(rows)} equipamentos")))
+                except Exception as ex:
+                    panel.after(0, lambda: status_lbl.configure(text=f"Erro: {ex}"))
 
             def _ver_historico():
                 sel = tree.focus()
                 if not sel:
-                    messagebox.showwarning("Inventário", "Selecione um equipamento.", parent=win)
+                    messagebox.showwarning("Inventário", "Selecione um equipamento.")
                     return
                 vals = tree.item(sel, "values")
                 _modal_historico_eq(sel, vals[1], vals[0])
 
-            btn_row = tk.Frame(win, bg=c["bg"], padx=20, pady=8)
+            btn_row = tk.Frame(panel, bg=c["bg"], padx=20, pady=6)
             btn_row.pack(fill="x")
-            tk.Button(btn_row, text="📋 Ver Histórico do Equipamento",
+            tk.Button(btn_row, text="📋 Histórico do Equipamento",
                       bg=c["card"], fg=c["text"], relief="flat", padx=10, pady=5,
                       command=_ver_historico).pack(side="left", padx=(0, 8))
-            tk.Button(btn_row, text="Fechar", bg=c["card"], fg=c["muted"],
-                      relief="flat", padx=10, pady=5,
-                      command=win.destroy).pack(side="right")
 
+            _thr.Thread(target=_load, daemon=True).start()
+
+        # ── Painel Cadastro ───────────────────────────────────────────────────
+        def _build_cadastro(panel):
+            tk.Label(panel, text="➕  Cadastrar Equipamento", bg=c["bg"], fg=c["text"],
+                     font=("Segoe UI", 13, "bold"), padx=20, pady=14).pack(anchor="w")
+            _modal_cadastro()
+
+        # ── Painel Importação IA ──────────────────────────────────────────────
+        def _build_importacao(panel):
+            top = tk.Frame(panel, bg=c["bg"], padx=20, pady=14)
+            top.pack(fill="x")
+            tk.Label(top, text="🤖  Importação IA", bg=c["bg"], fg=c["text"],
+                     font=("Segoe UI", 13, "bold")).pack(side="left")
+            tk.Label(panel,
+                     text="Cole abaixo dados copiados de uma planilha (TSV). "
+                          "A primeira linha deve ser o cabeçalho.",
+                     bg=c["bg"], fg=c["muted"], font=("Segoe UI", 9),
+                     padx=20, justify="left").pack(anchor="w")
+            txt = tk.Text(panel, bg=c["card"], fg=c["text"], insertbackground=c["text"],
+                          relief="flat", font=("Consolas", 9), padx=10, pady=10)
+            txt.pack(fill="both", expand=True, padx=20, pady=10)
+            status_lbl = tk.Label(panel, text="", bg=c["bg"], fg=c["muted"],
+                                  font=("Segoe UI", 9))
+            status_lbl.pack()
+
+            def _importar():
+                raw = txt.get("1.0", "end").strip()
+                if not raw:
+                    panel.after(0, lambda: status_lbl.config(text="Cole os dados antes de importar."))
+                    return
+                linhas = [l for l in raw.splitlines() if l.strip()]
+                if len(linhas) < 2:
+                    panel.after(0, lambda: status_lbl.config(text="Mín. cabeçalho + 1 linha."))
+                    return
+                panel.after(0, lambda: status_lbl.config(text="Processando…"))
+                headers = [h.strip().lower().replace(" ", "_") for h in linhas[0].split("\t")]
+                ok = erros = 0
+                for linha in linhas[1:]:
+                    vals = linha.split("\t")
+                    reg = {headers[i]: vals[i].strip() for i in range(min(len(headers), len(vals)))}
+                    try:
+                        _supa_post("equipamentos", reg)
+                        ok += 1
+                    except Exception:
+                        erros += 1
+                panel.after(0, lambda: status_lbl.config(text=f"Importados: {ok} | Erros: {erros}"))
+
+            tk.Button(panel, text="📥 Importar", bg=c["teal"], fg="#fff",
+                      relief="flat", padx=16, pady=6,
+                      command=lambda: _thr.Thread(target=_importar, daemon=True).start()
+                      ).pack(pady=(0, 16))
+
+        # ── Painéis de tabela simples ─────────────────────────────────────────
+        def _build_relatorios(panel):
+            _build_tabela_panel(panel, "Relatórios", "📋", "relatorios",
+                                {"id": "ID", "nome": "Nome", "tipo": "Tipo",
+                                 "criado_em": "Criado em", "status": "Status"})
+
+        def _build_financeiro(panel):
+            _build_tabela_panel(panel, "Financeiro", "💰", "financeiro",
+                                {"id": "ID", "descricao": "Descrição", "tipo": "Tipo",
+                                 "valor": "Valor (R$)", "vencimento": "Vencimento",
+                                 "fornecedor": "Fornecedor"})
+
+        def _build_fornecedores(panel):
+            _build_tabela_panel(panel, "Fornecedores", "🏭", "fornecedores",
+                                {"id": "ID", "nome": "Nome", "cnpj": "CNPJ",
+                                 "contato": "Contato", "email": "E-mail",
+                                 "telefone": "Telefone"})
+
+        def _build_reembolsos(panel):
+            _build_tabela_panel(panel, "Reembolsos", "💸", "reembolsos",
+                                {"id": "ID", "funcionario": "Funcionário",
+                                 "descricao": "Descrição", "valor": "Valor (R$)",
+                                 "data": "Data", "status": "Status"})
+
+        def _build_funcionarios(panel):
+            _build_tabela_panel(panel, "Funcionários", "👥", "funcionarios",
+                                {"id": "ID", "nome": "Nome", "departamento": "Departamento",
+                                 "cargo": "Cargo", "email": "E-mail", "status": "Status"})
+
+        def _build_usuarios(panel):
+            _build_tabela_panel(panel, "Usuários / Permissões", "🔐", "usuarios",
+                                {"id": "ID", "nome": "Nome", "email": "E-mail",
+                                 "perfil": "Perfil", "ativo": "Ativo"})
+
+        def _build_termos(panel):
+            _build_tabela_panel(panel, "Termos de Responsabilidade", "📄",
+                                "termos_responsabilidade",
+                                {"id": "ID", "funcionario": "Funcionário",
+                                 "equipamento": "Equipamento",
+                                 "data_assinatura": "Assinatura", "status": "Status"})
+
+        def _build_historico_geral(panel):
+            top = tk.Frame(panel, bg=c["bg"], padx=20, pady=14)
+            top.pack(fill="x")
+            tk.Label(top, text="🕒  Histórico de Uso", bg=c["bg"], fg=c["text"],
+                     font=("Segoe UI", 13, "bold")).pack(side="left")
+            tk.Button(top, text="⟳ Atualizar", bg=c["teal"], fg="#fff",
+                      relief="flat", padx=10, pady=4,
+                      command=lambda: _thr.Thread(target=_load4, daemon=True).start()
+                      ).pack(side="right")
+
+            filt_row4 = tk.Frame(panel, bg=c["bg"], padx=20)
+            filt_row4.pack(fill="x", pady=(0, 6))
+            tk.Label(filt_row4, text="Filtrar:", bg=c["bg"], fg=c["muted"],
+                     font=("Segoe UI", 9)).pack(side="left")
+            fv4 = tk.StringVar()
+            tk.Entry(filt_row4, textvariable=fv4, bg=c["card"], fg=c["text"],
+                     insertbackground=c["text"], relief="flat",
+                     font=("Segoe UI", 10)).pack(side="left", padx=8, fill="x", expand=True)
+
+            cols4 = ("Data/Hora", "Equipamento ID", "Ação", "Descrição", "Usuário")
+            frm4 = tk.Frame(panel, bg=c["bg"], padx=20)
+            frm4.pack(fill="both", expand=True)
+            tree4 = ttk.Treeview(frm4, columns=cols4, show="headings",
+                                 style="Inv.Treeview", selectmode="none")
+            for col_n, w in zip(cols4, [130, 110, 90, 300, 150]):
+                tree4.heading(col_n, text=col_n)
+                tree4.column(col_n, width=w, anchor="w")
+            vsb4 = ttk.Scrollbar(frm4, orient="vertical", command=tree4.yview)
+            tree4.configure(yscrollcommand=vsb4.set)
+            vsb4.pack(side="right", fill="y")
+            tree4.pack(fill="both", expand=True)
+            lbl4 = tk.Label(panel, text="Carregando...", bg=c["bg"], fg=c["muted"],
+                            font=("Segoe UI", 9))
+            lbl4.pack(pady=4)
+
+            _rows4 = []
+
+            def _pop4():
+                tree4.delete(*tree4.get_children())
+                q = fv4.get().lower()
+                for r in _rows4:
+                    dt = (r.get("criado_em") or "")[:16].replace("T", " ")
+                    eq_id = str(r.get("equipamento_id", ""))
+                    acao = r.get("acao", "")
+                    desc = r.get("descricao", "")
+                    usr = r.get("usuario_email", "")
+                    if q and q not in f"{dt} {eq_id} {acao} {desc} {usr}".lower():
+                        continue
+                    tree4.insert("", "end", values=(dt, eq_id, acao, desc, usr))
+
+            fv4.trace_add("write", lambda *_: _pop4())
+
+            def _load4():
+                panel.after(0, lambda: lbl4.configure(text="Carregando..."))
+                try:
+                    rows = _supa_get("historico_equipamentos",
+                                     {"order": "criado_em.desc",
+                                      "select": "criado_em,equipamento_id,acao,descricao,usuario_email"})
+                    _rows4.clear()
+                    _rows4.extend(rows)
+                    panel.after(0, lambda: (_pop4(), lbl4.configure(text=f"{len(rows)} registros")))
+                except Exception as ex:
+                    panel.after(0, lambda: lbl4.configure(text=f"Erro: {ex}"))
+
+            _thr.Thread(target=_load4, daemon=True).start()
+
+        # ── Registrar itens na sidebar ────────────────────────────────────────
+        BUILDERS = [
+            _build_dashboard, _build_equipamentos, _build_cadastro,
+            _build_importacao, _build_relatorios, _build_financeiro,
+            _build_fornecedores, _build_reembolsos, _build_funcionarios,
+            _build_usuarios, _build_termos, _build_historico_geral,
+        ]
+        for (icon, label), builder in zip(NAV_ITEMS, BUILDERS):
+            _nav_btn(icon, label, label, builder)
+
+        tk.Frame(sidebar, bg=c["border2"], height=1).pack(fill="x", padx=12, pady=8)
+
+        # Abrir Dashboard por padrão
+        _show_panel(_build_dashboard, "Dashboard")
+
+        # ── Modal Equipamentos em Uso ─────────────────────────────────────────
         # ── Modal Histórico de um Equipamento ────────────────────────────────
         def _modal_historico_eq(eq_id, nome, patrimonio):
             win2 = tk.Toplevel(self.root)
@@ -4656,79 +4695,6 @@ class MacroLockAnalyzerApp:
             tk.Button(btn_row3, text="Cancelar", bg=c["card"], fg=c["muted"],
                       relief="flat", padx=10, pady=5,
                       command=win3.destroy).pack(side="left")
-
-        # ── Modal Histórico Geral ─────────────────────────────────────────────
-        def _modal_historico_geral():
-            win4 = tk.Toplevel(self.root)
-            win4.title("Histórico de Uso — Todos Equipamentos")
-            win4.geometry("820x480")
-            win4.configure(bg=c["bg"])
-            win4.transient(self.root)
-            win4.grab_set()
-
-            tk.Label(win4, text="📋  Histórico de Uso Geral",
-                     bg=c["bg"], fg=c["text"],
-                     font=("Segoe UI", 13, "bold")).pack(anchor="w", padx=20, pady=(14, 4))
-
-            filt_row4 = tk.Frame(win4, bg=c["bg"], padx=20)
-            filt_row4.pack(fill="x", pady=(0, 6))
-            tk.Label(filt_row4, text="Filtrar:", bg=c["bg"], fg=c["muted"],
-                     font=("Segoe UI", 9)).pack(side="left")
-            filt4 = tk.StringVar()
-            tk.Entry(filt_row4, textvariable=filt4, bg=c["card"], fg=c["text"],
-                     insertbackground=c["text"], relief="flat",
-                     font=("Segoe UI", 10)).pack(side="left", padx=8, fill="x", expand=True)
-
-            cols4 = ("Data/Hora", "Equipamento", "Ação", "Descrição", "Usuário")
-            import tkinter.ttk as _ttk4
-            tree4 = _ttk4.Treeview(win4, columns=cols4, show="headings",
-                                   style="Inv.Treeview", selectmode="none")
-            for col_n, w in zip(cols4, [140, 200, 100, 240, 150]):
-                tree4.heading(col_n, text=col_n)
-                tree4.column(col_n, width=w, anchor="w")
-            vsb4 = _ttk4.Scrollbar(win4, orient="vertical", command=tree4.yview)
-            tree4.configure(yscrollcommand=vsb4.set)
-            tree4.pack(side="left", fill="both", expand=True, padx=(20, 0), pady=(0, 10))
-            vsb4.pack(side="left", fill="y", pady=(0, 10))
-
-            _all4 = []
-            lbl4 = tk.Label(win4, text="Carregando...", bg=c["bg"], fg=c["muted"],
-                            font=("Segoe UI", 9))
-            lbl4.pack()
-
-            def _pop4():
-                tree4.delete(*tree4.get_children())
-                q = filt4.get().lower()
-                for r in _all4:
-                    dt   = (r.get("criado_em") or "")[:16].replace("T", " ")
-                    eq_n = r.get("equipamentos", {}).get("nome", "") if isinstance(r.get("equipamentos"), dict) else ""
-                    acao = r.get("acao", "")
-                    desc = r.get("descricao", "")
-                    usr  = r.get("usuario_email", "")
-                    if q and q not in f"{eq_n} {acao} {desc} {usr}".lower():
-                        continue
-                    tree4.insert("", "end", values=(dt, eq_n, acao, desc, usr))
-
-            filt4.trace_add("write", lambda *_: _pop4())
-
-            def _fetch4():
-                try:
-                    rows = _supa_get("historico_equipamentos", {
-                        "order": "criado_em.desc",
-                        "limit": 500,
-                        "select": "criado_em,acao,descricao,usuario_email,equipamentos(nome)"
-                    })
-                    _all4.clear()
-                    _all4.extend(rows)
-                    win4.after(0, lambda: (_pop4(),
-                                           lbl4.configure(text=f"{len(rows)} registros")))
-                except Exception as ex:
-                    win4.after(0, lambda: lbl4.configure(text=f"Erro: {ex}"))
-            _thr.Thread(target=_fetch4, daemon=True).start()
-
-            tk.Button(win4, text="Fechar", bg=c["card"], fg=c["muted"],
-                      relief="flat", padx=10, pady=5,
-                      command=win4.destroy).pack(pady=8)
 
     # ──────────────────────────────────────────────────────────────────────────
 
