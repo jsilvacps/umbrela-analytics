@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "Umbrela Analytics"
-APP_VERSION = "8.67"
+APP_VERSION = "8.68"
 GITHUB_REPO = "jsilvacps/umbrela-analytics"   # repositório público de releases
 DEFAULT_EXCLUDE = "OFFLINE, [LOCK.OFFLINE], [LOCK.LOGIN], LOGIN, LOGOUT"
 LOGO_FILE = "logo_umbrela_analytics.png"
@@ -4040,20 +4040,28 @@ class MacroLockAnalyzerApp:
                       "Servidor", "Switch", "Roteador", "Nobreak", "Fone de Ouvido",
                       "Kit Teclado/Mouse", "Periférico", "Outro"]
 
+        import urllib.request as _ureq, urllib.parse as _uparse, json as _ujson
+
         def _supa_get(table, params=None):
-            r = requests.get(f"{SUPA_URL}/{table}", headers=SUPA_HDR, params=params, timeout=15)
-            r.raise_for_status()
-            return r.json()
+            url = f"{SUPA_URL}/{table}"
+            if params:
+                url += "?" + _uparse.urlencode(params)
+            req = _ureq.Request(url, headers=SUPA_HDR)
+            with _ureq.urlopen(req, timeout=15) as resp:
+                return _ujson.loads(resp.read().decode())
 
         def _supa_post(table, data):
-            r = requests.post(f"{SUPA_URL}/{table}", headers=SUPA_HDR, json=data, timeout=15)
-            r.raise_for_status()
-            return r.json()
+            body = _ujson.dumps(data).encode()
+            req = _ureq.Request(f"{SUPA_URL}/{table}", data=body, headers=SUPA_HDR, method="POST")
+            with _ureq.urlopen(req, timeout=15) as resp:
+                return _ujson.loads(resp.read().decode())
 
         def _supa_patch(table, eq_filter, data):
-            r = requests.patch(f"{SUPA_URL}/{table}", headers=SUPA_HDR,
-                               params={"id": f"eq.{eq_filter}"}, json=data, timeout=15)
-            r.raise_for_status()
+            body = _ujson.dumps(data).encode()
+            url = f"{SUPA_URL}/{table}?id=eq.{eq_filter}"
+            req = _ureq.Request(url, data=body, headers=SUPA_HDR, method="PATCH")
+            with _ureq.urlopen(req, timeout=15) as resp:
+                resp.read()
 
         def _registrar_hist(eq_id, acao, desc):
             try:
