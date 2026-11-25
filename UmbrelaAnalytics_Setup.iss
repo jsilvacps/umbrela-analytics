@@ -15,7 +15,10 @@ AppPublisher={#MyAppPublisher}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
-OutputDir=installer
+#ifndef MyOutputDir
+  #define MyOutputDir "installer"
+#endif
+OutputDir={#MyOutputDir}
 OutputBaseFilename=UmbrelaAnalytics_Setup_v{#MyAppVersion}
 SetupIconFile=logo_umbrela_analytics.ico
 Compression=lzma2/ultra64

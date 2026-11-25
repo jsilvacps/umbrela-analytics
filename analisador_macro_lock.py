@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "Umbrela Analytics"
-APP_VERSION = "8.66"
+APP_VERSION = "8.67"
 GITHUB_REPO = "jsilvacps/umbrela-analytics"   # repositório público de releases
 DEFAULT_EXCLUDE = "OFFLINE, [LOCK.OFFLINE], [LOCK.LOGIN], LOGIN, LOGOUT"
 LOGO_FILE = "logo_umbrela_analytics.png"
@@ -4067,36 +4067,63 @@ class MacroLockAnalyzerApp:
                 pass
 
         # ── Mosaico principal ─────────────────────────────────────────────────
-        scroll = tk.Frame(parent, bg=c["bg"])
-        scroll.pack(fill="both", expand=True)
+        outer = tk.Frame(parent, bg=c["bg"])
+        outer.pack(fill="both", expand=True)
+
+        canvas = tk.Canvas(outer, bg=c["bg"], highlightthickness=0)
+        vsb = tk.Scrollbar(outer, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+
+        scroll = tk.Frame(canvas, bg=c["bg"])
+        scroll_win = canvas.create_window((0, 0), window=scroll, anchor="nw")
+
+        def _on_scroll_resize(e):
+            canvas.itemconfig(scroll_win, width=e.width)
+        canvas.bind("<Configure>", _on_scroll_resize)
+        scroll.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind_all("<MouseWheel>", lambda e: canvas.yview_scroll(int(-1*(e.delta/120)), "units"))
 
         title_row = tk.Frame(scroll, bg=c["bg"])
-        title_row.pack(fill="x", pady=(0, 20))
-        tk.Label(title_row, text="Selecione uma opção", bg=c["bg"],
-                 fg=c["muted"], font=("Segoe UI", 11)).pack(anchor="w")
+        title_row.pack(fill="x", padx=20, pady=(16, 4))
+        tk.Label(title_row, text="Inventário TI — DMS", bg=c["bg"],
+                 fg=c["text"], font=("Segoe UI", 13, "bold")).pack(side="left")
+        tk.Label(title_row, text="Selecione uma funcionalidade", bg=c["bg"],
+                 fg=c["muted"], font=("Segoe UI", 10)).pack(side="left", padx=12)
 
         grid = tk.Frame(scroll, bg=c["bg"])
-        grid.pack(fill="both", expand=True)
+        grid.pack(fill="both", expand=True, padx=16, pady=8)
 
+        COLS = 4
         mosaic_items = [
-            ("🖥️", "Equipamentos\nem Uso", "Ver todos os equipamentos ativos e histórico"),
-            ("➕", "Cadastrar\nEquipamento", "Registrar novo equipamento no inventário"),
-            ("📋", "Histórico\nde Uso", "Rastrear quem usou cada equipamento"),
+            ("📊", "Dashboard",          "Resumo geral de equipamentos e custos"),
+            ("🖥️", "Equipamentos",        "Ver e filtrar todos os equipamentos"),
+            ("➕", "Cadastro / Edição",   "Registrar ou editar equipamentos"),
+            ("🤖", "Importação IA",       "Importar inventário via planilha ou IA"),
+            ("📋", "Relatórios",          "Relatórios detalhados e exportação"),
+            ("💰", "Financeiro",          "Custos, aluguéis e contratos"),
+            ("🏭", "Fornecedores",        "Gestão de fornecedores e contratos"),
+            ("💸", "Reembolsos",          "Controle de reembolsos e despesas"),
+            ("👥", "Funcionários",        "Colaboradores e alocação de equipamentos"),
+            ("🔐", "Usuários /\nPermissões", "Controle de acesso ao sistema"),
+            ("📄", "Termos de\nResponsabilidade", "Termos assinados por funcionários"),
+            ("🕒", "Histórico\nde Uso",   "Rastrear movimentações de equipamentos"),
         ]
 
         def _card_btn(parent, icon, title, subtitle, cmd):
             frame = tk.Frame(parent, bg=c["card"], cursor="hand2",
                              highlightthickness=1, highlightbackground=c["border2"])
-            frame.configure(width=200, height=160)
+            frame.configure(width=190, height=155)
             frame.pack_propagate(False)
-            inner = tk.Frame(frame, bg=c["card"], padx=16, pady=16)
+            inner = tk.Frame(frame, bg=c["card"], padx=12, pady=12)
             inner.pack(fill="both", expand=True)
             tk.Label(inner, text=icon, bg=c["card"], fg=c["text"],
-                     font=("Segoe UI", 28)).pack()
+                     font=("Segoe UI", 26)).pack()
             tk.Label(inner, text=title, bg=c["card"], fg=c["text"],
-                     font=("Segoe UI", 10, "bold"), justify="center").pack(pady=(6, 2))
+                     font=("Segoe UI", 9, "bold"), justify="center").pack(pady=(4, 2))
             tk.Label(inner, text=subtitle, bg=c["card"], fg=c["muted"],
-                     font=("Segoe UI", 8), wraplength=170, justify="center").pack()
+                     font=("Segoe UI", 7), wraplength=165, justify="center").pack()
             for w in (frame, inner) + tuple(inner.winfo_children()):
                 w.bind("<Button-1>", lambda e, f=cmd: f())
                 w.bind("<Enter>", lambda e, f=frame: f.configure(highlightbackground=c["teal"]))
@@ -4104,17 +4131,254 @@ class MacroLockAnalyzerApp:
             return frame
 
         _card_actions = [
+            lambda: _modal_dashboard(),
             lambda: _modal_equipamentos(),
             lambda: _modal_cadastro(),
+            lambda: _modal_importacao_ia(),
+            lambda: _modal_relatorios(),
+            lambda: _modal_financeiro(),
+            lambda: _modal_fornecedores(),
+            lambda: _modal_reembolsos(),
+            lambda: _modal_funcionarios(),
+            lambda: _modal_usuarios(),
+            lambda: _modal_termos(),
             lambda: _modal_historico_geral(),
         ]
 
-        for col_i, (icon, title, sub) in enumerate(mosaic_items):
-            _card_btn(grid, icon, title, sub, _card_actions[col_i]).grid(
-                row=0, column=col_i, padx=10, pady=10, sticky="nsew")
-        grid.columnconfigure(0, weight=1)
-        grid.columnconfigure(1, weight=1)
-        grid.columnconfigure(2, weight=1)
+        for idx, (icon, title, sub) in enumerate(mosaic_items):
+            row_i = idx // COLS
+            col_i = idx % COLS
+            _card_btn(grid, icon, title, sub, _card_actions[idx]).grid(
+                row=row_i, column=col_i, padx=8, pady=8, sticky="nsew")
+        for ci in range(COLS):
+            grid.columnconfigure(ci, weight=1)
+
+        # ── Helper: modal genérico de tabela ──────────────────────────────────
+        def _modal_tabela(titulo, icone, tabela, colunas_label):
+            win = tk.Toplevel(self.root)
+            win.title(titulo)
+            win.geometry("860x520")
+            win.configure(bg=c["bg"])
+            win.transient(self.root)
+            win.grab_set()
+
+            top = tk.Frame(win, bg=c["bg"], padx=20, pady=14)
+            top.pack(fill="x")
+            tk.Label(top, text=f"{icone}  {titulo}", bg=c["bg"], fg=c["text"],
+                     font=("Segoe UI", 13, "bold")).pack(side="left")
+            tk.Button(top, text="⟳ Atualizar", bg=c["teal"], fg="#fff",
+                      relief="flat", padx=10, pady=4, command=lambda: _load()).pack(side="right")
+
+            # search
+            sf = tk.Frame(win, bg=c["bg"], padx=20)
+            sf.pack(fill="x", pady=(0, 6))
+            sv = tk.StringVar()
+            sv.trace_add("write", lambda *_: _apply_filter())
+            tk.Label(sf, text="Filtrar:", bg=c["bg"], fg=c["muted"],
+                     font=("Segoe UI", 9)).pack(side="left")
+            tk.Entry(sf, textvariable=sv, bg=c["card"], fg=c["text"],
+                     insertbackground=c["text"], relief="flat",
+                     font=("Segoe UI", 10)).pack(side="left", padx=8, fill="x", expand=True)
+
+            # treeview
+            frm = tk.Frame(win, bg=c["bg"], padx=20)
+            frm.pack(fill="both", expand=True, pady=(0, 12))
+            style = ttk.Style()
+            style.configure("DMS.Treeview", background=c["card"], foreground=c["text"],
+                            fieldbackground=c["card"], rowheight=26)
+            style.configure("DMS.Treeview.Heading", background=c["card"],
+                            foreground=c["muted"], font=("Segoe UI", 9, "bold"))
+            cols = list(colunas_label.keys())
+            tv = ttk.Treeview(frm, columns=cols, show="headings",
+                              style="DMS.Treeview")
+            for col_key in cols:
+                tv.heading(col_key, text=colunas_label[col_key])
+                tv.column(col_key, width=120, minwidth=60)
+            sb = tk.Scrollbar(frm, orient="vertical", command=tv.yview)
+            tv.configure(yscrollcommand=sb.set)
+            sb.pack(side="right", fill="y")
+            tv.pack(fill="both", expand=True)
+
+            status_lbl = tk.Label(win, text="", bg=c["bg"], fg=c["muted"],
+                                  font=("Segoe UI", 9))
+            status_lbl.pack(pady=(0, 8))
+
+            _rows = []
+
+            def _load():
+                status_lbl.config(text="Carregando…")
+                win.update_idletasks()
+                try:
+                    data = _supa_get(tabela)
+                    _rows.clear()
+                    _rows.extend(data)
+                    _apply_filter()
+                    status_lbl.config(text=f"{len(data)} registros")
+                except Exception as ex:
+                    status_lbl.config(text=f"Erro: {ex}")
+
+            def _apply_filter():
+                q = sv.get().lower()
+                for row in tv.get_children():
+                    tv.delete(row)
+                for item in _rows:
+                    vals = [str(item.get(k, "")) for k in cols]
+                    if q == "" or any(q in v.lower() for v in vals):
+                        tv.insert("", "end", values=vals)
+
+            _thr.Thread(target=_load, daemon=True).start()
+
+        # ── Modal Dashboard ────────────────────────────────────────────────────
+        def _modal_dashboard():
+            win = tk.Toplevel(self.root)
+            win.title("Dashboard — Inventário TI")
+            win.geometry("860x540")
+            win.configure(bg=c["bg"])
+            win.transient(self.root)
+            win.grab_set()
+
+            top = tk.Frame(win, bg=c["bg"], padx=20, pady=14)
+            top.pack(fill="x")
+            tk.Label(top, text="📊  Dashboard — Inventário TI", bg=c["bg"],
+                     fg=c["text"], font=("Segoe UI", 13, "bold")).pack(side="left")
+            tk.Button(top, text="⟳ Atualizar", bg=c["teal"], fg="#fff",
+                      relief="flat", padx=10, pady=4, command=lambda: _load_dash()).pack(side="right")
+
+            cards_frame = tk.Frame(win, bg=c["bg"], padx=20)
+            cards_frame.pack(fill="x", pady=10)
+
+            stat_labels = {}
+            for i, (key, lbl, default) in enumerate([
+                ("total", "Total de Equipamentos", "—"),
+                ("ativos", "Ativos", "—"),
+                ("alugados", "Alugados", "—"),
+                ("custo", "Custo Mensal Total", "—"),
+            ]):
+                f = tk.Frame(cards_frame, bg=c["card"], padx=20, pady=14,
+                             highlightthickness=1, highlightbackground=c["border2"])
+                f.grid(row=0, column=i, padx=8, sticky="nsew")
+                tk.Label(f, text=lbl, bg=c["card"], fg=c["muted"],
+                         font=("Segoe UI", 8)).pack()
+                lv = tk.Label(f, text=default, bg=c["card"], fg=c["teal"],
+                              font=("Segoe UI", 16, "bold"))
+                lv.pack()
+                stat_labels[key] = lv
+                cards_frame.columnconfigure(i, weight=1)
+
+            status_lbl = tk.Label(win, text="", bg=c["bg"], fg=c["muted"],
+                                  font=("Segoe UI", 9))
+            status_lbl.pack()
+
+            def _load_dash():
+                status_lbl.config(text="Carregando…")
+                win.update_idletasks()
+                try:
+                    equips = _supa_get("equipamentos")
+                    total = len(equips)
+                    ativos = sum(1 for e in equips if str(e.get("status","")).lower() in ("ativo","em uso",""))
+                    alugados = sum(1 for e in equips if str(e.get("tipo_aquisicao","")).lower() == "alugado")
+                    custo = sum(float(e.get("valor_mensal") or 0) for e in equips)
+                    stat_labels["total"].config(text=str(total))
+                    stat_labels["ativos"].config(text=str(ativos))
+                    stat_labels["alugados"].config(text=str(alugados))
+                    stat_labels["custo"].config(text=f"R$ {custo:,.2f}".replace(",","X").replace(".",",").replace("X","."))
+                    status_lbl.config(text=f"{total} equipamentos carregados")
+                except Exception as ex:
+                    status_lbl.config(text=f"Erro: {ex}")
+
+            _thr.Thread(target=_load_dash, daemon=True).start()
+
+        # ── Modal Importação IA ────────────────────────────────────────────────
+        def _modal_importacao_ia():
+            win = tk.Toplevel(self.root)
+            win.title("Importação IA")
+            win.geometry("700x420")
+            win.configure(bg=c["bg"])
+            win.transient(self.root)
+            win.grab_set()
+
+            tk.Label(win, text="🤖  Importação IA", bg=c["bg"], fg=c["text"],
+                     font=("Segoe UI", 13, "bold"), padx=20, pady=14).pack(anchor="w")
+            tk.Label(win, text="Cole abaixo os dados copiados de uma planilha ou relatório.\n"
+                     "O sistema identificará os campos automaticamente.", bg=c["bg"],
+                     fg=c["muted"], font=("Segoe UI", 9), padx=20, justify="left").pack(anchor="w")
+
+            txt = tk.Text(win, bg=c["card"], fg=c["text"], insertbackground=c["text"],
+                          relief="flat", font=("Consolas", 9), padx=10, pady=10)
+            txt.pack(fill="both", expand=True, padx=20, pady=10)
+
+            status_lbl = tk.Label(win, text="", bg=c["bg"], fg=c["muted"],
+                                  font=("Segoe UI", 9))
+            status_lbl.pack()
+
+            def _importar():
+                raw = txt.get("1.0", "end").strip()
+                if not raw:
+                    status_lbl.config(text="Cole os dados antes de importar.")
+                    return
+                linhas = [l for l in raw.splitlines() if l.strip()]
+                if len(linhas) < 2:
+                    status_lbl.config(text="Dados insuficientes (mín. cabeçalho + 1 linha).")
+                    return
+                status_lbl.config(text="Processando…")
+                win.update_idletasks()
+                headers = [h.strip().lower().replace(" ", "_") for h in linhas[0].split("\t")]
+                ok = 0
+                erros = 0
+                for linha in linhas[1:]:
+                    vals = linha.split("\t")
+                    registro = {headers[i]: vals[i].strip() for i in range(min(len(headers), len(vals)))}
+                    try:
+                        _supa_post("equipamentos", registro)
+                        ok += 1
+                    except Exception:
+                        erros += 1
+                status_lbl.config(text=f"Importados: {ok} | Erros: {erros}")
+
+            tk.Button(win, text="📥 Importar", bg=c["teal"], fg="#fff",
+                      relief="flat", padx=16, pady=6,
+                      command=lambda: _thr.Thread(target=_importar, daemon=True).start()
+                      ).pack(pady=(0, 16))
+
+        # ── Modais tabela simples ──────────────────────────────────────────────
+        def _modal_relatorios():
+            _modal_tabela("Relatórios", "📋", "relatorios",
+                          {"id": "ID", "nome": "Nome", "tipo": "Tipo",
+                           "criado_em": "Criado em", "status": "Status"})
+
+        def _modal_financeiro():
+            _modal_tabela("Financeiro", "💰", "financeiro",
+                          {"id": "ID", "descricao": "Descrição", "tipo": "Tipo",
+                           "valor": "Valor (R$)", "vencimento": "Vencimento",
+                           "fornecedor": "Fornecedor"})
+
+        def _modal_fornecedores():
+            _modal_tabela("Fornecedores", "🏭", "fornecedores",
+                          {"id": "ID", "nome": "Nome", "cnpj": "CNPJ",
+                           "contato": "Contato", "email": "E-mail",
+                           "telefone": "Telefone"})
+
+        def _modal_reembolsos():
+            _modal_tabela("Reembolsos", "💸", "reembolsos",
+                          {"id": "ID", "funcionario": "Funcionário",
+                           "descricao": "Descrição", "valor": "Valor (R$)",
+                           "data": "Data", "status": "Status"})
+
+        def _modal_funcionarios():
+            _modal_tabela("Funcionários", "👥", "funcionarios",
+                          {"id": "ID", "nome": "Nome", "departamento": "Departamento",
+                           "cargo": "Cargo", "email": "E-mail", "status": "Status"})
+
+        def _modal_usuarios():
+            _modal_tabela("Usuários / Permissões", "🔐", "usuarios",
+                          {"id": "ID", "nome": "Nome", "email": "E-mail",
+                           "perfil": "Perfil", "ativo": "Ativo"})
+
+        def _modal_termos():
+            _modal_tabela("Termos de Responsabilidade", "📄", "termos_responsabilidade",
+                          {"id": "ID", "funcionario": "Funcionário",
+                           "equipamento": "Equipamento",
+                           "data_assinatura": "Assinatura", "status": "Status"})
 
         # ── Modal Equipamentos em Uso ─────────────────────────────────────────
         def _modal_equipamentos():
