@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "Umbrela Analytics"
-APP_VERSION = "8.72"
+APP_VERSION = "8.73"
 GITHUB_REPO = "jsilvacps/umbrela-analytics"   # repositório público de releases
 DEFAULT_EXCLUDE = "OFFLINE, [LOCK.OFFLINE], [LOCK.LOGIN], LOGIN, LOGOUT"
 LOGO_FILE = "logo_umbrela_analytics.png"
@@ -150,6 +150,10 @@ BUSINESS_SECONDS_PER_DAY = 28_800
 
 def app_dir() -> Path:
     if getattr(sys, "frozen", False):
+        # Em --onefile o PyInstaller extrai para sys._MEIPASS; recursos bundled ficam lá
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass and (Path(meipass) / LOGO_FILE).exists():
+            return Path(meipass)
         return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parent
 
