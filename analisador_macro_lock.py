@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "Umbrela Analytics"
-APP_VERSION = "8.61"
+APP_VERSION = "8.66"
 GITHUB_REPO = "jsilvacps/umbrela-analytics"   # repositório público de releases
 DEFAULT_EXCLUDE = "OFFLINE, [LOCK.OFFLINE], [LOCK.LOGIN], LOGIN, LOGOUT"
 LOGO_FILE = "logo_umbrela_analytics.png"
@@ -285,24 +285,12 @@ class MacroLockAnalyzerApp:
                         f"Você já está na versão mais recente (v{APP_VERSION})."))
                 return  # já está atualizado
 
-            # Localiza o .exe nos assets
+            # Localiza o instalador Setup nos assets
             exe_asset = next(
-                (a for a in assets if a["name"].lower().endswith(".exe")
-                 and "setup" not in a["name"].lower()), None)
-
-            html_url = data.get("html_url", f"https://github.com/{GITHUB_REPO}/releases/latest")
+                (a for a in assets if a["name"].lower().endswith(".exe")), None)
 
             if not exe_asset:
-                # Sem .exe no release — abre página do release no navegador
-                msg = (f"Nova versão disponível: v{tag}\n\n"
-                       f"{body[:300].strip()}\n\n" if body else
-                       f"Nova versão disponível: v{tag}\n\n") + \
-                      "Clique em Sim para abrir a página de download no navegador."
-                self.root.after(0, lambda u=html_url, t=tag, m=msg: (
-                    messagebox.askyesno(f"Atualização disponível — v{t}", m, icon="question")
-                    and __import__("webbrowser").open(u)
-                ))
-                return
+                return  # sem asset — ignora silenciosamente
 
             dl_url  = exe_asset["browser_download_url"]
             dl_size = exe_asset.get("size", 0)
@@ -312,7 +300,7 @@ class MacroLockAnalyzerApp:
                 f"Nova versão disponível: v{tag}\n\n"
                 f"{body[:300].strip()}\n\n" if body else
                 f"Nova versão disponível: v{tag}\n\n"
-            ) + f"Tamanho: {size_mb}\n\nDeseja baixar e atualizar agora?"
+            ) + f"Tamanho: {size_mb}\n\nDeseja baixar e instalar agora?"
 
             self.root.after(0, lambda: self._offer_update(tag, dl_url, msg))
 
@@ -328,8 +316,8 @@ class MacroLockAnalyzerApp:
         threading.Thread(target=self._do_update, args=(dl_url,), daemon=True).start()
 
     def _do_update(self, dl_url: str):
-        """Baixa o novo EXE e substitui o atual, depois reinicia."""
-        import urllib.request, tempfile, os, sys
+        """Baixa o Setup e executa silenciosamente, fechando o app atual."""
+        import urllib.request, tempfile, os, subprocess
         try:
             self.root.after(0, lambda: self.set_status("Baixando atualização...", 10))
             tmp = tempfile.mktemp(suffix=".exe")
@@ -343,27 +331,19 @@ class MacroLockAnalyzerApp:
             urllib.request.urlretrieve(dl_url, tmp, reporthook=_report)
             self.root.after(0, lambda: self.set_status("Instalando...", 95))
 
-            current = sys.executable if getattr(sys, "frozen", False) else None
-            if current and os.path.exists(current):
-                # Windows: agenda substituição via script bat executado após encerrar
-                bat = tempfile.mktemp(suffix=".bat")
-                with open(bat, "w") as f:
-                    f.write(
-                        f'@echo off\n'
-                        f'timeout /t 2 /nobreak >nul\n'
-                        f'move /y "{tmp}" "{current}"\n'
-                        f'start "" "{current}"\n'
-                        f'del "%~f0"\n'
-                    )
-                import subprocess
-                subprocess.Popen(["cmd", "/c", bat],
-                                 creationflags=subprocess.CREATE_NO_WINDOW)
-                self.root.after(0, self.root.destroy)
-            else:
-                # Modo dev: apenas informa onde foi salvo
-                self.root.after(0, lambda: messagebox.showinfo(
-                    "Atualização baixada",
-                    f"Novo executável salvo em:\n{tmp}\n\nSubstitua manualmente."))
+            # Executa o Setup com /SILENT — Inno Setup fecha o app antigo e instala
+            bat = tempfile.mktemp(suffix=".bat")
+            with open(bat, "w") as f:
+                f.write(
+                    f'@echo off\n'
+                    f'timeout /t 2 /nobreak >nul\n'
+                    f'start "" /wait "{tmp}" /SILENT /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS\n'
+                    f'del "{tmp}"\n'
+                    f'del "%~f0"\n'
+                )
+            subprocess.Popen(["cmd", "/c", bat],
+                             creationflags=subprocess.CREATE_NO_WINDOW)
+            self.root.after(0, self.root.destroy)
 
         except Exception as e:
             self.root.after(0, lambda: messagebox.showerror(
@@ -761,6 +741,7 @@ class MacroLockAnalyzerApp:
             ("makrolock",   "⬡", "Makrolock",   True),
             ("microsoft",   "🪟", "Microsoft",   True),
             ("onvio",       "O", "Onvio",        True),
+            ("inventario",  "📦", "Inventário TI", True),
             ("processar",   "⚙", "Processar",   False),
             ("relatorios",  "≡", "Relatórios",  False),
         ]
@@ -773,6 +754,7 @@ class MacroLockAnalyzerApp:
             "makrolock":  ("Makrolock",  "Monitoramento de acessos"),
             "microsoft":  ("Microsoft",  "Gestão de usuários Microsoft 365"),
             "onvio":      ("Onvio",      "Gestão de acesso dos funcionários"),
+            "inventario": ("Inventário TI", "Controle de equipamentos e patrimônio"),
             "processar":  ("Processar",  "Importar e tratar dados"),
             "relatorios": ("Relatórios", "Análise e exportação"),
         }
@@ -898,6 +880,7 @@ class MacroLockAnalyzerApp:
         tab_makrolock = self._pages["makrolock"]
         tab_microsoft = self._pages["microsoft"]
         tab_onvio     = self._pages["onvio"]
+        tab_inventario = self._pages["inventario"]
         tab_process   = self._pages["processar"]
         tab_reports   = self._pages["relatorios"]
 
@@ -905,6 +888,7 @@ class MacroLockAnalyzerApp:
         self._build_makrolock_tab(tab_makrolock)
         self._build_microsoft_tab(tab_microsoft)
         self._build_onvio_tab(tab_onvio)
+        self._build_inventario_tab(tab_inventario)
         self._build_process_tab(tab_process)
         self._build_reports_tab(tab_reports)
 
@@ -3945,11 +3929,11 @@ class MacroLockAnalyzerApp:
                 try:
                     base = _onvio_base.get().strip()
                     # Busca lista de funcionários (paginado)
-                    page, all_emps = 1, []
+                    page, all_emps = 0, []
                     while True:
                         data = _api_request(
                             "GET",
-                            f"/api/security/v1/companies/{company}/contacts",
+                            f"/api/core/v1/companies/{company}/contacts",
                             params={"itemsPerPage": 100, "pageIndex": page}
                         )
                         items = data.get("items", [])
@@ -4035,6 +4019,444 @@ class MacroLockAnalyzerApp:
 
         tk.Button(act_row, text="Atualizar", command=_atualizar, **_btn_cfg).pack(side="left", padx=(0, 6))
         tk.Button(act_row, text="Ativar / Desativar Acesso", command=_toggle_acesso, **_btn_cfg).pack(side="left", padx=(0, 6))
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # ABA INVENTÁRIO TI
+    # ──────────────────────────────────────────────────────────────────────────
+    def _build_inventario_tab(self, parent):
+        import threading as _thr
+        c = self.COLORS
+
+        SUPA_URL = "https://ryjaermoalgdrxdpvbkn.supabase.co/rest/v1"
+        SUPA_KEY = "sb_publishable_bgGkLh3UtvHzcdOnVFQw9Q_13Vw429g"
+        SUPA_HDR = {
+            "apikey": SUPA_KEY,
+            "Authorization": f"Bearer {SUPA_KEY}",
+            "Content-Type": "application/json",
+            "Prefer": "return=representation",
+        }
+
+        CATEGORIAS = ["Notebook", "Desktop", "Monitor", "Impressora", "Celular",
+                      "Servidor", "Switch", "Roteador", "Nobreak", "Fone de Ouvido",
+                      "Kit Teclado/Mouse", "Periférico", "Outro"]
+
+        def _supa_get(table, params=None):
+            r = requests.get(f"{SUPA_URL}/{table}", headers=SUPA_HDR, params=params, timeout=15)
+            r.raise_for_status()
+            return r.json()
+
+        def _supa_post(table, data):
+            r = requests.post(f"{SUPA_URL}/{table}", headers=SUPA_HDR, json=data, timeout=15)
+            r.raise_for_status()
+            return r.json()
+
+        def _supa_patch(table, eq_filter, data):
+            r = requests.patch(f"{SUPA_URL}/{table}", headers=SUPA_HDR,
+                               params={"id": f"eq.{eq_filter}"}, json=data, timeout=15)
+            r.raise_for_status()
+
+        def _registrar_hist(eq_id, acao, desc):
+            try:
+                _supa_post("historico_equipamentos", {
+                    "equipamento_id": eq_id,
+                    "acao": acao,
+                    "descricao": desc,
+                    "usuario_email": "umbrela@dms.com.br",
+                })
+            except Exception:
+                pass
+
+        # ── Mosaico principal ─────────────────────────────────────────────────
+        scroll = tk.Frame(parent, bg=c["bg"])
+        scroll.pack(fill="both", expand=True)
+
+        title_row = tk.Frame(scroll, bg=c["bg"])
+        title_row.pack(fill="x", pady=(0, 20))
+        tk.Label(title_row, text="Selecione uma opção", bg=c["bg"],
+                 fg=c["muted"], font=("Segoe UI", 11)).pack(anchor="w")
+
+        grid = tk.Frame(scroll, bg=c["bg"])
+        grid.pack(fill="both", expand=True)
+
+        mosaic_items = [
+            ("🖥️", "Equipamentos\nem Uso", "Ver todos os equipamentos ativos e histórico"),
+            ("➕", "Cadastrar\nEquipamento", "Registrar novo equipamento no inventário"),
+            ("📋", "Histórico\nde Uso", "Rastrear quem usou cada equipamento"),
+        ]
+
+        def _card_btn(parent, icon, title, subtitle, cmd):
+            frame = tk.Frame(parent, bg=c["card"], cursor="hand2",
+                             highlightthickness=1, highlightbackground=c["border2"])
+            frame.configure(width=200, height=160)
+            frame.pack_propagate(False)
+            inner = tk.Frame(frame, bg=c["card"], padx=16, pady=16)
+            inner.pack(fill="both", expand=True)
+            tk.Label(inner, text=icon, bg=c["card"], fg=c["text"],
+                     font=("Segoe UI", 28)).pack()
+            tk.Label(inner, text=title, bg=c["card"], fg=c["text"],
+                     font=("Segoe UI", 10, "bold"), justify="center").pack(pady=(6, 2))
+            tk.Label(inner, text=subtitle, bg=c["card"], fg=c["muted"],
+                     font=("Segoe UI", 8), wraplength=170, justify="center").pack()
+            for w in (frame, inner) + tuple(inner.winfo_children()):
+                w.bind("<Button-1>", lambda e, f=cmd: f())
+                w.bind("<Enter>", lambda e, f=frame: f.configure(highlightbackground=c["teal"]))
+                w.bind("<Leave>", lambda e, f=frame: f.configure(highlightbackground=c["border2"]))
+            return frame
+
+        _card_actions = [
+            lambda: _modal_equipamentos(),
+            lambda: _modal_cadastro(),
+            lambda: _modal_historico_geral(),
+        ]
+
+        for col_i, (icon, title, sub) in enumerate(mosaic_items):
+            _card_btn(grid, icon, title, sub, _card_actions[col_i]).grid(
+                row=0, column=col_i, padx=10, pady=10, sticky="nsew")
+        grid.columnconfigure(0, weight=1)
+        grid.columnconfigure(1, weight=1)
+        grid.columnconfigure(2, weight=1)
+
+        # ── Modal Equipamentos em Uso ─────────────────────────────────────────
+        def _modal_equipamentos():
+            win = tk.Toplevel(self.root)
+            win.title("Equipamentos em Uso")
+            win.geometry("900x560")
+            win.configure(bg=c["bg"])
+            win.transient(self.root)
+            win.grab_set()
+
+            top = tk.Frame(win, bg=c["bg"], padx=20, pady=14)
+            top.pack(fill="x")
+            tk.Label(top, text="🖥️  Equipamentos em Uso", bg=c["bg"], fg=c["text"],
+                     font=("Segoe UI", 13, "bold")).pack(side="left")
+            tk.Button(top, text="⟳ Atualizar", bg=c["teal"], fg="#fff",
+                      relief="flat", padx=10, pady=4,
+                      command=lambda: _load()).pack(side="right")
+
+            # Filtro
+            filt_row = tk.Frame(win, bg=c["bg"], padx=20)
+            filt_row.pack(fill="x", pady=(0, 8))
+            tk.Label(filt_row, text="Filtrar:", bg=c["bg"], fg=c["muted"],
+                     font=("Segoe UI", 9)).pack(side="left")
+            filt_var = tk.StringVar()
+            filt_entry = tk.Entry(filt_row, textvariable=filt_var, bg=c["card"],
+                                  fg=c["text"], insertbackground=c["text"], relief="flat",
+                                  font=("Segoe UI", 10))
+            filt_entry.pack(side="left", padx=8, fill="x", expand=True)
+
+            cols = ("Patrimônio", "Nome", "Categoria", "Usuário", "Status", "Data Aquisição")
+            import tkinter.ttk as _ttk2
+            style2 = _ttk2.Style()
+            style2.configure("Inv.Treeview", background=c["card"], foreground=c["text"],
+                             fieldbackground=c["card"], rowheight=26)
+            style2.configure("Inv.Treeview.Heading", background=c["border"],
+                             foreground=c["muted"], font=("Segoe UI", 9, "bold"))
+            tree = _ttk2.Treeview(win, columns=cols, show="headings",
+                                  style="Inv.Treeview", selectmode="browse")
+            widths = [110, 220, 110, 160, 80, 110]
+            for col_n, w in zip(cols, widths):
+                tree.heading(col_n, text=col_n)
+                tree.column(col_n, width=w, anchor="w")
+            vsb = _ttk2.Scrollbar(win, orient="vertical", command=tree.yview)
+            tree.configure(yscrollcommand=vsb.set)
+            tree.pack(side="left", fill="both", expand=True, padx=(20, 0), pady=(0, 10))
+            vsb.pack(side="left", fill="y", pady=(0, 10))
+
+            _all_rows = []
+
+            def _populate(rows):
+                tree.delete(*tree.get_children())
+                q = filt_var.get().lower()
+                for r in rows:
+                    pat  = r.get("patrimonio_auto") or r.get("patrimonio") or ""
+                    nome = r.get("nome", "")
+                    cat  = r.get("categoria", "")
+                    usr  = r.get("nome_usuario", "") or ""
+                    sta  = r.get("status", "")
+                    dt   = (r.get("data_aquisicao") or "")[:10]
+                    if q and q not in f"{pat} {nome} {cat} {usr} {sta}".lower():
+                        continue
+                    tree.insert("", "end", iid=r.get("id",""), values=(pat, nome, cat, usr, sta, dt))
+
+            filt_var.trace_add("write", lambda *_: _populate(_all_rows))
+
+            status_lbl = tk.Label(win, text="Carregando...", bg=c["bg"], fg=c["muted"],
+                                  font=("Segoe UI", 9))
+            status_lbl.pack(pady=4)
+
+            def _load():
+                status_lbl.configure(text="Carregando...")
+                def _fetch():
+                    try:
+                        rows = _supa_get("equipamentos", {
+                            "status": "neq.Baixado",
+                            "order": "nome.asc",
+                            "select": "id,nome,patrimonio,patrimonio_auto,categoria,nome_usuario,status,data_aquisicao"
+                        })
+                        _all_rows.clear()
+                        _all_rows.extend(rows)
+                        win.after(0, lambda: (_populate(rows),
+                                              status_lbl.configure(text=f"{len(rows)} equipamentos")))
+                    except Exception as ex:
+                        win.after(0, lambda: status_lbl.configure(text=f"Erro: {ex}"))
+                _thr.Thread(target=_fetch, daemon=True).start()
+            _load()
+
+            def _ver_historico():
+                sel = tree.focus()
+                if not sel:
+                    messagebox.showwarning("Inventário", "Selecione um equipamento.", parent=win)
+                    return
+                vals = tree.item(sel, "values")
+                _modal_historico_eq(sel, vals[1], vals[0])
+
+            btn_row = tk.Frame(win, bg=c["bg"], padx=20, pady=8)
+            btn_row.pack(fill="x")
+            tk.Button(btn_row, text="📋 Ver Histórico do Equipamento",
+                      bg=c["card"], fg=c["text"], relief="flat", padx=10, pady=5,
+                      command=_ver_historico).pack(side="left", padx=(0, 8))
+            tk.Button(btn_row, text="Fechar", bg=c["card"], fg=c["muted"],
+                      relief="flat", padx=10, pady=5,
+                      command=win.destroy).pack(side="right")
+
+        # ── Modal Histórico de um Equipamento ────────────────────────────────
+        def _modal_historico_eq(eq_id, nome, patrimonio):
+            win2 = tk.Toplevel(self.root)
+            win2.title(f"Histórico — {nome}")
+            win2.geometry("720x420")
+            win2.configure(bg=c["bg"])
+            win2.transient(self.root)
+            win2.grab_set()
+
+            tk.Label(win2, text=f"📋  Histórico de Uso — {nome}  ({patrimonio})",
+                     bg=c["bg"], fg=c["text"],
+                     font=("Segoe UI", 12, "bold")).pack(anchor="w", padx=20, pady=(14, 8))
+
+            cols2 = ("Data/Hora", "Ação", "Descrição", "Usuário")
+            import tkinter.ttk as _ttk3
+            tree2 = _ttk3.Treeview(win2, columns=cols2, show="headings",
+                                   style="Inv.Treeview", selectmode="none")
+            for col_n, w in zip(cols2, [140, 110, 320, 160]):
+                tree2.heading(col_n, text=col_n)
+                tree2.column(col_n, width=w, anchor="w")
+            vsb2 = _ttk3.Scrollbar(win2, orient="vertical", command=tree2.yview)
+            tree2.configure(yscrollcommand=vsb2.set)
+            tree2.pack(side="left", fill="both", expand=True, padx=(20, 0), pady=(0, 10))
+            vsb2.pack(side="left", fill="y", pady=(0, 10))
+
+            lbl2 = tk.Label(win2, text="Carregando...", bg=c["bg"], fg=c["muted"],
+                            font=("Segoe UI", 9))
+            lbl2.pack()
+
+            def _fetch2():
+                try:
+                    rows = _supa_get("historico_equipamentos", {
+                        "equipamento_id": f"eq.{eq_id}",
+                        "order": "criado_em.desc",
+                        "select": "criado_em,acao,descricao,usuario_email"
+                    })
+                    def _fill():
+                        tree2.delete(*tree2.get_children())
+                        for r in rows:
+                            dt = (r.get("criado_em") or "")[:16].replace("T", " ")
+                            tree2.insert("", "end", values=(
+                                dt,
+                                r.get("acao", ""),
+                                r.get("descricao", ""),
+                                r.get("usuario_email", ""),
+                            ))
+                        lbl2.configure(text=f"{len(rows)} registros")
+                    win2.after(0, _fill)
+                except Exception as ex:
+                    win2.after(0, lambda: lbl2.configure(text=f"Erro: {ex}"))
+            _thr.Thread(target=_fetch2, daemon=True).start()
+
+            tk.Button(win2, text="Fechar", bg=c["card"], fg=c["muted"],
+                      relief="flat", padx=10, pady=5,
+                      command=win2.destroy).pack(pady=8)
+
+        # ── Modal Cadastrar Equipamento ───────────────────────────────────────
+        def _modal_cadastro(eq_data=None):
+            is_edit = eq_data is not None
+            win3 = tk.Toplevel(self.root)
+            win3.title("Editar Equipamento" if is_edit else "Cadastrar Equipamento")
+            win3.geometry("520x480")
+            win3.configure(bg=c["bg"])
+            win3.transient(self.root)
+            win3.grab_set()
+
+            tk.Label(win3, text="➕  Cadastrar Equipamento" if not is_edit else "✏️  Editar Equipamento",
+                     bg=c["bg"], fg=c["text"],
+                     font=("Segoe UI", 13, "bold")).pack(anchor="w", padx=20, pady=(14, 10))
+
+            form = tk.Frame(win3, bg=c["bg"], padx=20)
+            form.pack(fill="x")
+
+            _fld_style = dict(bg=c["card"], fg=c["text"], insertbackground=c["text"],
+                              relief="flat", font=("Segoe UI", 10))
+
+            def _row(label, row_i):
+                tk.Label(form, text=label, bg=c["bg"], fg=c["muted"],
+                         font=("Segoe UI", 9), anchor="w").grid(
+                    row=row_i*2, column=0, sticky="w", pady=(8, 0))
+
+            def _entry(row_i, default=""):
+                e = tk.Entry(form, **_fld_style)
+                e.insert(0, default)
+                e.grid(row=row_i*2+1, column=0, sticky="ew", pady=(2, 0))
+                return e
+
+            form.columnconfigure(0, weight=1)
+
+            _row("Nome do Equipamento *", 0)
+            f_nome = _entry(0, eq_data.get("nome","") if is_edit else "")
+
+            _row("Categoria *", 1)
+            f_cat = ttk.Combobox(form, values=CATEGORIAS, state="readonly",
+                                 font=("Segoe UI", 10))
+            f_cat.set((eq_data.get("categoria","") if is_edit else "") or "Notebook")
+            f_cat.grid(row=3, column=0, sticky="ew", pady=(2, 0))
+
+            _row("Patrimônio", 2)
+            f_pat = _entry(2, eq_data.get("patrimonio","") if is_edit else "")
+
+            _row("Número de Série", 3)
+            f_serie = _entry(3, eq_data.get("numero_serie","") if is_edit else "")
+
+            _row("Responsável (nome do funcionário)", 4)
+            f_usr = _entry(4, eq_data.get("nome_usuario","") if is_edit else "")
+
+            _row("Data de Aquisição (AAAA-MM-DD)", 5)
+            from datetime import date as _date
+            f_dt = _entry(5, (eq_data.get("data_aquisicao","") or "")[:10] if is_edit else str(_date.today()))
+
+            _row("Observações", 6)
+            f_obs = tk.Text(form, height=3, **_fld_style)
+            f_obs.insert("1.0", eq_data.get("observacao","") if is_edit else "")
+            f_obs.grid(row=13, column=0, sticky="ew", pady=(2, 0))
+
+            status_lbl3 = tk.Label(win3, text="", bg=c["bg"], fg=c["teal"],
+                                   font=("Segoe UI", 9))
+            status_lbl3.pack(pady=4)
+
+            def _salvar():
+                nome = f_nome.get().strip()
+                if not nome:
+                    messagebox.showwarning("Inventário", "Nome é obrigatório.", parent=win3)
+                    return
+                dados = {
+                    "nome":          nome,
+                    "categoria":     f_cat.get(),
+                    "patrimonio":    f_pat.get().strip() or None,
+                    "numero_serie":  f_serie.get().strip() or None,
+                    "nome_usuario":  f_usr.get().strip() or None,
+                    "data_aquisicao": f_dt.get().strip() or None,
+                    "observacao":    f_obs.get("1.0", "end").strip(),
+                    "tipo":          "Comprado",
+                    "status":        "Ativo",
+                }
+                status_lbl3.configure(text="Salvando...")
+                def _do():
+                    try:
+                        if is_edit:
+                            _supa_patch("equipamentos", eq_data["id"], dados)
+                            _registrar_hist(eq_data["id"], "EDIÇÃO",
+                                            "Equipamento atualizado via Umbrela Analytics.")
+                            win3.after(0, lambda: (status_lbl3.configure(text="✔ Atualizado!"),
+                                                   win3.after(1200, win3.destroy)))
+                        else:
+                            res = _supa_post("equipamentos", dados)
+                            eq_id = res[0].get("id") if res else None
+                            if eq_id:
+                                _registrar_hist(eq_id, "CADASTRO",
+                                                "Equipamento cadastrado via Umbrela Analytics.")
+                            win3.after(0, lambda: (status_lbl3.configure(text="✔ Cadastrado!"),
+                                                   win3.after(1200, win3.destroy)))
+                    except Exception as ex:
+                        win3.after(0, lambda: status_lbl3.configure(text=f"Erro: {ex}"))
+                _thr.Thread(target=_do, daemon=True).start()
+
+            btn_row3 = tk.Frame(win3, bg=c["bg"], padx=20, pady=8)
+            btn_row3.pack(fill="x")
+            tk.Button(btn_row3, text="💾 Salvar", bg=c["teal"], fg="#fff",
+                      relief="flat", padx=12, pady=5,
+                      command=_salvar).pack(side="left", padx=(0, 8))
+            tk.Button(btn_row3, text="Cancelar", bg=c["card"], fg=c["muted"],
+                      relief="flat", padx=10, pady=5,
+                      command=win3.destroy).pack(side="left")
+
+        # ── Modal Histórico Geral ─────────────────────────────────────────────
+        def _modal_historico_geral():
+            win4 = tk.Toplevel(self.root)
+            win4.title("Histórico de Uso — Todos Equipamentos")
+            win4.geometry("820x480")
+            win4.configure(bg=c["bg"])
+            win4.transient(self.root)
+            win4.grab_set()
+
+            tk.Label(win4, text="📋  Histórico de Uso Geral",
+                     bg=c["bg"], fg=c["text"],
+                     font=("Segoe UI", 13, "bold")).pack(anchor="w", padx=20, pady=(14, 4))
+
+            filt_row4 = tk.Frame(win4, bg=c["bg"], padx=20)
+            filt_row4.pack(fill="x", pady=(0, 6))
+            tk.Label(filt_row4, text="Filtrar:", bg=c["bg"], fg=c["muted"],
+                     font=("Segoe UI", 9)).pack(side="left")
+            filt4 = tk.StringVar()
+            tk.Entry(filt_row4, textvariable=filt4, bg=c["card"], fg=c["text"],
+                     insertbackground=c["text"], relief="flat",
+                     font=("Segoe UI", 10)).pack(side="left", padx=8, fill="x", expand=True)
+
+            cols4 = ("Data/Hora", "Equipamento", "Ação", "Descrição", "Usuário")
+            import tkinter.ttk as _ttk4
+            tree4 = _ttk4.Treeview(win4, columns=cols4, show="headings",
+                                   style="Inv.Treeview", selectmode="none")
+            for col_n, w in zip(cols4, [140, 200, 100, 240, 150]):
+                tree4.heading(col_n, text=col_n)
+                tree4.column(col_n, width=w, anchor="w")
+            vsb4 = _ttk4.Scrollbar(win4, orient="vertical", command=tree4.yview)
+            tree4.configure(yscrollcommand=vsb4.set)
+            tree4.pack(side="left", fill="both", expand=True, padx=(20, 0), pady=(0, 10))
+            vsb4.pack(side="left", fill="y", pady=(0, 10))
+
+            _all4 = []
+            lbl4 = tk.Label(win4, text="Carregando...", bg=c["bg"], fg=c["muted"],
+                            font=("Segoe UI", 9))
+            lbl4.pack()
+
+            def _pop4():
+                tree4.delete(*tree4.get_children())
+                q = filt4.get().lower()
+                for r in _all4:
+                    dt   = (r.get("criado_em") or "")[:16].replace("T", " ")
+                    eq_n = r.get("equipamentos", {}).get("nome", "") if isinstance(r.get("equipamentos"), dict) else ""
+                    acao = r.get("acao", "")
+                    desc = r.get("descricao", "")
+                    usr  = r.get("usuario_email", "")
+                    if q and q not in f"{eq_n} {acao} {desc} {usr}".lower():
+                        continue
+                    tree4.insert("", "end", values=(dt, eq_n, acao, desc, usr))
+
+            filt4.trace_add("write", lambda *_: _pop4())
+
+            def _fetch4():
+                try:
+                    rows = _supa_get("historico_equipamentos", {
+                        "order": "criado_em.desc",
+                        "limit": 500,
+                        "select": "criado_em,acao,descricao,usuario_email,equipamentos(nome)"
+                    })
+                    _all4.clear()
+                    _all4.extend(rows)
+                    win4.after(0, lambda: (_pop4(),
+                                           lbl4.configure(text=f"{len(rows)} registros")))
+                except Exception as ex:
+                    win4.after(0, lambda: lbl4.configure(text=f"Erro: {ex}"))
+            _thr.Thread(target=_fetch4, daemon=True).start()
+
+            tk.Button(win4, text="Fechar", bg=c["card"], fg=c["muted"],
+                      relief="flat", padx=10, pady=5,
+                      command=win4.destroy).pack(pady=8)
 
     # ──────────────────────────────────────────────────────────────────────────
 
