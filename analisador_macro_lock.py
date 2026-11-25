@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "Umbrela Analytics"
-APP_VERSION = "8.69"
+APP_VERSION = "8.70"
 GITHUB_REPO = "jsilvacps/umbrela-analytics"   # repositório público de releases
 DEFAULT_EXCLUDE = "OFFLINE, [LOCK.OFFLINE], [LOCK.LOGIN], LOGIN, LOGOUT"
 LOGO_FILE = "logo_umbrela_analytics.png"
@@ -4340,6 +4340,20 @@ class MacroLockAnalyzerApp:
                 except Exception as ex:
                     panel.after(0, lambda: status_lbl.configure(text=f"Erro: {ex}"))
 
+            def _abrir_edicao(event=None):
+                sel = tree.focus()
+                if not sel:
+                    return
+                def _fetch_e_abrir():
+                    try:
+                        rows = _supa_get("equipamentos", {"id": f"eq.{sel}"})
+                        if rows:
+                            panel.after(0, lambda: _modal_cadastro(eq_data=rows[0],
+                                                                    on_save=lambda: _thr.Thread(target=_load, daemon=True).start()))
+                    except Exception as ex:
+                        panel.after(0, lambda: messagebox.showerror("Erro", str(ex)))
+                _thr.Thread(target=_fetch_e_abrir, daemon=True).start()
+
             def _ver_historico():
                 sel = tree.focus()
                 if not sel:
@@ -4348,8 +4362,13 @@ class MacroLockAnalyzerApp:
                 vals = tree.item(sel, "values")
                 _modal_historico_eq(sel, vals[1], vals[0])
 
+            tree.bind("<Double-1>", _abrir_edicao)
+
             btn_row = tk.Frame(panel, bg=c["bg"], padx=20, pady=6)
             btn_row.pack(fill="x")
+            tk.Button(btn_row, text="✏️ Editar Selecionado",
+                      bg=c["teal"], fg="#fff", relief="flat", padx=10, pady=5,
+                      command=_abrir_edicao).pack(side="left", padx=(0, 8))
             tk.Button(btn_row, text="📋 Histórico do Equipamento",
                       bg=c["card"], fg=c["text"], relief="flat", padx=10, pady=5,
                       command=_ver_historico).pack(side="left", padx=(0, 8))
@@ -4587,7 +4606,7 @@ class MacroLockAnalyzerApp:
                       command=win2.destroy).pack(pady=8)
 
         # ── Modal Cadastrar Equipamento ───────────────────────────────────────
-        def _modal_cadastro(eq_data=None):
+        def _modal_cadastro(eq_data=None, on_save=None):
             is_edit = eq_data is not None
             win3 = tk.Toplevel(self.root)
             win3.title("Editar Equipamento" if is_edit else "Cadastrar Equipamento")
@@ -4670,11 +4689,28 @@ class MacroLockAnalyzerApp:
                 def _do():
                     try:
                         if is_edit:
+                            # detecta campos alterados para o histórico
+                            LABELS = {
+                                "nome": "Nome", "categoria": "Categoria",
+                                "patrimonio": "Patrimônio", "numero_serie": "Nº Série",
+                                "nome_usuario": "Responsável", "data_aquisicao": "Data Aquisição",
+                                "observacao": "Observações",
+                            }
+                            alteracoes = []
+                            for campo, label in LABELS.items():
+                                antigo = str(eq_data.get(campo) or "").strip()
+                                novo   = str(dados.get(campo) or "").strip()
+                                if antigo != novo:
+                                    alteracoes.append(f"{label}: '{antigo}' → '{novo}'")
                             _supa_patch("equipamentos", eq_data["id"], dados)
-                            _registrar_hist(eq_data["id"], "EDIÇÃO",
-                                            "Equipamento atualizado via Umbrela Analytics.")
-                            win3.after(0, lambda: (status_lbl3.configure(text="✔ Atualizado!"),
-                                                   win3.after(1200, win3.destroy)))
+                            desc_hist = ("Alterações: " + " | ".join(alteracoes)) if alteracoes else "Sem alterações detectadas."
+                            _registrar_hist(eq_data["id"], "EDIÇÃO", desc_hist)
+                            def _ok():
+                                status_lbl3.configure(text="✔ Atualizado!")
+                                if on_save:
+                                    on_save()
+                                win3.after(1200, win3.destroy)
+                            win3.after(0, _ok)
                         else:
                             res = _supa_post("equipamentos", dados)
                             eq_id = res[0].get("id") if res else None
