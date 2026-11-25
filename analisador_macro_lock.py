@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "Umbrela Analytics"
-APP_VERSION = "8.71"
+APP_VERSION = "8.72"
 GITHUB_REPO = "jsilvacps/umbrela-analytics"   # repositório público de releases
 DEFAULT_EXCLUDE = "OFFLINE, [LOCK.OFFLINE], [LOCK.LOGIN], LOGIN, LOGOUT"
 LOGO_FILE = "logo_umbrela_analytics.png"
@@ -331,13 +331,17 @@ class MacroLockAnalyzerApp:
             urllib.request.urlretrieve(dl_url, tmp, reporthook=_report)
             self.root.after(0, lambda: self.set_status("Instalando...", 95))
 
-            # Executa o Setup com /SILENT — Inno Setup fecha o app antigo e instala
+            # Executa o Setup com /VERYSILENT — força fechamento e reinstala
+            import sys as _sys
+            exe_atual = _sys.executable
             bat = tempfile.mktemp(suffix=".bat")
             with open(bat, "w") as f:
                 f.write(
                     f'@echo off\n'
+                    f'timeout /t 3 /nobreak >nul\n'
+                    f'taskkill /f /im "UmbrelaAnalytics.exe" >nul 2>&1\n'
                     f'timeout /t 2 /nobreak >nul\n'
-                    f'start "" /wait "{tmp}" /SILENT /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS\n'
+                    f'start "" /wait "{tmp}" /VERYSILENT /SUPPRESSMSGBOXES /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS\n'
                     f'del "{tmp}"\n'
                     f'del "%~f0"\n'
                 )
