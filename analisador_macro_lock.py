@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 APP_NAME = "Umbrela Analytics"
-APP_VERSION = "8.70"
+APP_VERSION = "8.71"
 GITHUB_REPO = "jsilvacps/umbrela-analytics"   # repositório público de releases
 DEFAULT_EXCLUDE = "OFFLINE, [LOCK.OFFLINE], [LOCK.LOGIN], LOGIN, LOGOUT"
 LOGO_FILE = "logo_umbrela_analytics.png"
@@ -4605,96 +4605,156 @@ class MacroLockAnalyzerApp:
                       relief="flat", padx=10, pady=5,
                       command=win2.destroy).pack(pady=8)
 
-        # ── Modal Cadastrar Equipamento ───────────────────────────────────────
+        # ── Modal Cadastrar / Editar Equipamento ─────────────────────────────
         def _modal_cadastro(eq_data=None, on_save=None):
+            from datetime import date as _date
             is_edit = eq_data is not None
             win3 = tk.Toplevel(self.root)
-            win3.title("Editar Equipamento" if is_edit else "Cadastrar Equipamento")
-            win3.geometry("520x480")
+            win3.title("Editar Equipamento" if is_edit else "Novo Equipamento")
+            win3.geometry("560x560")
+            win3.resizable(False, False)
             win3.configure(bg=c["bg"])
             win3.transient(self.root)
             win3.grab_set()
 
-            tk.Label(win3, text="➕  Cadastrar Equipamento" if not is_edit else "✏️  Editar Equipamento",
-                     bg=c["bg"], fg=c["text"],
-                     font=("Segoe UI", 13, "bold")).pack(anchor="w", padx=20, pady=(14, 10))
+            # ── Cabeçalho colorido ────────────────────────────────────────────
+            HDR_BG = "#0d1117"
+            hdr = tk.Frame(win3, bg=HDR_BG, pady=18)
+            hdr.pack(fill="x")
+            tk.Label(hdr, text="✏️  Editar Equipamento" if is_edit else "➕  Novo Equipamento",
+                     bg=HDR_BG, fg="#ffffff",
+                     font=("Segoe UI", 14, "bold"), padx=24).pack(anchor="w")
+            if is_edit:
+                pat = eq_data.get("patrimonio_auto") or eq_data.get("patrimonio") or ""
+                tk.Label(hdr, text=f"Patrimônio: {pat}",
+                         bg=HDR_BG, fg="#6b7280", font=("Segoe UI", 9), padx=24).pack(anchor="w")
 
-            form = tk.Frame(win3, bg=c["bg"], padx=20)
-            form.pack(fill="x")
+            # ── Área scrollável ───────────────────────────────────────────────
+            body = tk.Frame(win3, bg=c["bg"])
+            body.pack(fill="both", expand=True, padx=24, pady=16)
 
-            _fld_style = dict(bg=c["card"], fg=c["text"], insertbackground=c["text"],
-                              relief="flat", font=("Segoe UI", 10))
+            ACCENT = c["teal"]
+            FLD_BG = c["card"]
+            FLD_FG = c["text"]
+            LBL_FG = c["muted"]
 
-            def _row(label, row_i):
-                tk.Label(form, text=label, bg=c["bg"], fg=c["muted"],
-                         font=("Segoe UI", 9), anchor="w").grid(
-                    row=row_i*2, column=0, sticky="w", pady=(8, 0))
+            def _field(parent, label, row, col=0, colspan=1, default="", widget_type="entry"):
+                r = row * 3
+                c_span = colspan
+                tk.Label(parent, text=label, bg=c["bg"], fg=LBL_FG,
+                         font=("Segoe UI", 8, "bold"), anchor="w").grid(
+                    row=r, column=col, columnspan=c_span, sticky="w", pady=(10, 0))
+                sep = tk.Frame(parent, bg=ACCENT, height=1)
+                sep.grid(row=r+2, column=col, columnspan=c_span, sticky="ew")
+                if widget_type == "entry":
+                    w = tk.Entry(parent, bg=FLD_BG, fg=FLD_FG, insertbackground=FLD_FG,
+                                 relief="flat", font=("Segoe UI", 11), bd=0,
+                                 highlightthickness=0)
+                    w.insert(0, default)
+                    w.grid(row=r+1, column=col, columnspan=c_span, sticky="ew", ipady=6)
+                    w.bind("<FocusIn>",  lambda e, s=sep: s.configure(bg=ACCENT))
+                    w.bind("<FocusOut>", lambda e, s=sep: s.configure(bg=c["border2"]))
+                    sep.configure(bg=c["border2"])
+                    return w
+                return None
 
-            def _entry(row_i, default=""):
-                e = tk.Entry(form, **_fld_style)
-                e.insert(0, default)
-                e.grid(row=row_i*2+1, column=0, sticky="ew", pady=(2, 0))
-                return e
+            body.columnconfigure(0, weight=1)
+            body.columnconfigure(1, weight=1)
 
-            form.columnconfigure(0, weight=1)
+            # linha 0: Nome (ocupa 2 colunas)
+            f_nome = _field(body, "Nome do Equipamento *", 0, col=0, colspan=2,
+                            default=eq_data.get("nome","") if is_edit else "")
 
-            _row("Nome do Equipamento *", 0)
-            f_nome = _entry(0, eq_data.get("nome","") if is_edit else "")
-
-            _row("Categoria *", 1)
-            f_cat = ttk.Combobox(form, values=CATEGORIAS, state="readonly",
-                                 font=("Segoe UI", 10))
+            # linha 1: Categoria (combobox) | Patrimônio
+            r1 = 1 * 3
+            tk.Label(body, text="Categoria *", bg=c["bg"], fg=LBL_FG,
+                     font=("Segoe UI", 8, "bold"), anchor="w").grid(
+                row=r1, column=0, sticky="w", pady=(10, 0))
+            sep_cat = tk.Frame(body, bg=c["border2"], height=1)
+            sep_cat.grid(row=r1+2, column=0, sticky="ew")
+            f_cat = ttk.Combobox(body, values=CATEGORIAS, state="readonly",
+                                 font=("Segoe UI", 11))
             f_cat.set((eq_data.get("categoria","") if is_edit else "") or "Notebook")
-            f_cat.grid(row=3, column=0, sticky="ew", pady=(2, 0))
+            f_cat.grid(row=r1+1, column=0, sticky="ew", ipady=4, padx=(0, 8))
+            f_cat.bind("<FocusIn>",  lambda e: sep_cat.configure(bg=ACCENT))
+            f_cat.bind("<FocusOut>", lambda e: sep_cat.configure(bg=c["border2"]))
 
-            _row("Patrimônio", 2)
-            f_pat = _entry(2, eq_data.get("patrimonio","") if is_edit else "")
+            f_pat = _field(body, "Patrimônio", 1, col=1,
+                           default=eq_data.get("patrimonio","") if is_edit else "")
 
-            _row("Número de Série", 3)
-            f_serie = _entry(3, eq_data.get("numero_serie","") if is_edit else "")
+            # linha 2: Nº Série | Responsável
+            f_serie = _field(body, "Número de Série", 2, col=0,
+                             default=eq_data.get("numero_serie","") if is_edit else "")
+            f_serie_w = f_serie
+            f_usr = _field(body, "Responsável", 2, col=1,
+                           default=eq_data.get("nome_usuario","") if is_edit else "")
 
-            _row("Responsável (nome do funcionário)", 4)
-            f_usr = _entry(4, eq_data.get("nome_usuario","") if is_edit else "")
+            # linha 3: Data Aquisição | Status
+            f_dt = _field(body, "Data de Aquisição (AAAA-MM-DD)", 3, col=0,
+                          default=(eq_data.get("data_aquisicao","") or "")[:10] if is_edit else str(_date.today()))
+            f_status_var = tk.StringVar(value=eq_data.get("status","Ativo") if is_edit else "Ativo")
+            r3 = 3 * 3
+            tk.Label(body, text="Status", bg=c["bg"], fg=LBL_FG,
+                     font=("Segoe UI", 8, "bold"), anchor="w").grid(
+                row=r3, column=1, sticky="w", pady=(10, 0))
+            sep_st = tk.Frame(body, bg=c["border2"], height=1)
+            sep_st.grid(row=r3+2, column=1, sticky="ew")
+            f_status = ttk.Combobox(body, textvariable=f_status_var,
+                                    values=["Ativo", "Em Uso", "Manutenção", "Alugado", "Baixado"],
+                                    state="readonly", font=("Segoe UI", 11))
+            f_status.grid(row=r3+1, column=1, sticky="ew", ipady=4)
+            f_status.bind("<FocusIn>",  lambda e: sep_st.configure(bg=ACCENT))
+            f_status.bind("<FocusOut>", lambda e: sep_st.configure(bg=c["border2"]))
 
-            _row("Data de Aquisição (AAAA-MM-DD)", 5)
-            from datetime import date as _date
-            f_dt = _entry(5, (eq_data.get("data_aquisicao","") or "")[:10] if is_edit else str(_date.today()))
-
-            _row("Observações", 6)
-            f_obs = tk.Text(form, height=3, **_fld_style)
+            # linha 4: Observações (2 colunas, Text)
+            r4 = 4 * 3
+            tk.Label(body, text="Observações", bg=c["bg"], fg=LBL_FG,
+                     font=("Segoe UI", 8, "bold"), anchor="w").grid(
+                row=r4, column=0, columnspan=2, sticky="w", pady=(10, 0))
+            sep_obs = tk.Frame(body, bg=c["border2"], height=1)
+            sep_obs.grid(row=r4+2, column=0, columnspan=2, sticky="ew")
+            f_obs = tk.Text(body, bg=FLD_BG, fg=FLD_FG, insertbackground=FLD_FG,
+                            relief="flat", font=("Segoe UI", 10), bd=0,
+                            highlightthickness=0, height=3)
             f_obs.insert("1.0", eq_data.get("observacao","") if is_edit else "")
-            f_obs.grid(row=13, column=0, sticky="ew", pady=(2, 0))
+            f_obs.grid(row=r4+1, column=0, columnspan=2, sticky="ew")
+            f_obs.bind("<FocusIn>",  lambda e: sep_obs.configure(bg=ACCENT))
+            f_obs.bind("<FocusOut>", lambda e: sep_obs.configure(bg=c["border2"]))
 
-            status_lbl3 = tk.Label(win3, text="", bg=c["bg"], fg=c["teal"],
+            # ── Rodapé fixo ───────────────────────────────────────────────────
+            footer = tk.Frame(win3, bg="#0d1117", pady=12)
+            footer.pack(fill="x", side="bottom")
+
+            status_lbl3 = tk.Label(footer, text="", bg="#0d1117", fg=ACCENT,
                                    font=("Segoe UI", 9))
-            status_lbl3.pack(pady=4)
+            status_lbl3.pack(side="left", padx=24)
 
-            def _salvar():
+            def _salvar(event=None):
                 nome = f_nome.get().strip()
                 if not nome:
-                    messagebox.showwarning("Inventário", "Nome é obrigatório.", parent=win3)
+                    status_lbl3.configure(text="⚠ Nome é obrigatório.", fg="#f87171")
+                    f_nome.focus_set()
                     return
                 dados = {
-                    "nome":          nome,
-                    "categoria":     f_cat.get(),
-                    "patrimonio":    f_pat.get().strip() or None,
-                    "numero_serie":  f_serie.get().strip() or None,
-                    "nome_usuario":  f_usr.get().strip() or None,
+                    "nome":           nome,
+                    "categoria":      f_cat.get(),
+                    "patrimonio":     f_pat.get().strip() or None,
+                    "numero_serie":   f_serie.get().strip() or None,
+                    "nome_usuario":   f_usr.get().strip() or None,
                     "data_aquisicao": f_dt.get().strip() or None,
-                    "observacao":    f_obs.get("1.0", "end").strip(),
-                    "tipo":          "Comprado",
-                    "status":        "Ativo",
+                    "observacao":     f_obs.get("1.0", "end").strip(),
+                    "status":         f_status_var.get(),
                 }
-                status_lbl3.configure(text="Salvando...")
+                status_lbl3.configure(text="Salvando…", fg=ACCENT)
+                btn_salvar.configure(state="disabled")
                 def _do():
                     try:
                         if is_edit:
-                            # detecta campos alterados para o histórico
                             LABELS = {
                                 "nome": "Nome", "categoria": "Categoria",
                                 "patrimonio": "Patrimônio", "numero_serie": "Nº Série",
                                 "nome_usuario": "Responsável", "data_aquisicao": "Data Aquisição",
-                                "observacao": "Observações",
+                                "status": "Status", "observacao": "Observações",
                             }
                             alteracoes = []
                             for campo, label in LABELS.items():
@@ -4703,10 +4763,10 @@ class MacroLockAnalyzerApp:
                                 if antigo != novo:
                                     alteracoes.append(f"{label}: '{antigo}' → '{novo}'")
                             _supa_patch("equipamentos", eq_data["id"], dados)
-                            desc_hist = ("Alterações: " + " | ".join(alteracoes)) if alteracoes else "Sem alterações detectadas."
+                            desc_hist = ("Alterações: " + " | ".join(alteracoes)) if alteracoes else "Sem alterações."
                             _registrar_hist(eq_data["id"], "EDIÇÃO", desc_hist)
                             def _ok():
-                                status_lbl3.configure(text="✔ Atualizado!")
+                                status_lbl3.configure(text="✔ Atualizado!", fg="#4ade80")
                                 if on_save:
                                     on_save()
                                 win3.after(1200, win3.destroy)
@@ -4717,20 +4777,39 @@ class MacroLockAnalyzerApp:
                             if eq_id:
                                 _registrar_hist(eq_id, "CADASTRO",
                                                 "Equipamento cadastrado via Umbrela Analytics.")
-                            win3.after(0, lambda: (status_lbl3.configure(text="✔ Cadastrado!"),
-                                                   win3.after(1200, win3.destroy)))
+                            if on_save:
+                                win3.after(0, on_save)
+                            win3.after(0, lambda: (
+                                status_lbl3.configure(text="✔ Cadastrado!", fg="#4ade80"),
+                                win3.after(1200, win3.destroy)))
                     except Exception as ex:
-                        win3.after(0, lambda: status_lbl3.configure(text=f"Erro: {ex}"))
+                        win3.after(0, lambda: (
+                            status_lbl3.configure(text=f"Erro: {ex}", fg="#f87171"),
+                            btn_salvar.configure(state="normal")))
                 _thr.Thread(target=_do, daemon=True).start()
 
-            btn_row3 = tk.Frame(win3, bg=c["bg"], padx=20, pady=8)
-            btn_row3.pack(fill="x")
-            tk.Button(btn_row3, text="💾 Salvar", bg=c["teal"], fg="#fff",
-                      relief="flat", padx=12, pady=5,
-                      command=_salvar).pack(side="left", padx=(0, 8))
-            tk.Button(btn_row3, text="Cancelar", bg=c["card"], fg=c["muted"],
-                      relief="flat", padx=10, pady=5,
-                      command=win3.destroy).pack(side="left")
+            btn_salvar = tk.Button(footer, text="  💾  Salvar  ", bg=ACCENT, fg="#fff",
+                                   relief="flat", font=("Segoe UI", 10, "bold"),
+                                   padx=16, pady=8, cursor="hand2", command=_salvar)
+            btn_salvar.pack(side="right", padx=(8, 24))
+            tk.Button(footer, text="Cancelar", bg="#1f2937", fg="#9ca3af",
+                      relief="flat", font=("Segoe UI", 10), padx=12, pady=8,
+                      cursor="hand2", command=win3.destroy).pack(side="right")
+
+            # ── Enter navega / salva ──────────────────────────────────────────
+            _tab_order = [f_nome, f_cat, f_pat, f_serie, f_usr, f_dt, f_status]
+            for i, w in enumerate(_tab_order):
+                prox = _tab_order[i+1] if i+1 < len(_tab_order) else None
+                def _next(e, nxt=prox):
+                    if nxt:
+                        nxt.focus_set()
+                    else:
+                        _salvar()
+                    return "break"
+                w.bind("<Return>", _next)
+
+            win3.bind("<Escape>", lambda e: win3.destroy())
+            f_nome.focus_set()
 
     # ──────────────────────────────────────────────────────────────────────────
 
